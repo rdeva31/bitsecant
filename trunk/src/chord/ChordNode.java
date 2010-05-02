@@ -9,20 +9,34 @@ public class ChordNode
 {
 	
 	private byte[] hash;
-	private SocketChannel sock;
+	private DatagramChannel sock;
 	private InetSocketAddress sockAddr;
 
 	public ChordNode(InetAddress IPAddr, short port) throws Exception
 	{
 		sockAddr = new InetSocketAddress(IPAddr, port);
 		
+		sock = DatagramChannel.open();
+		sock.connect(sockAddr);
+		
 		byte[] identifier = Arrays.copyOf(IPAddr.getAddress(), 6);
 		identifier[4] = (byte)((port >> 8) & 0xFF);
 		identifier[5] = (byte)(port & 0xFF);
 		hash = MessageDigest.getInstance("SHA").digest(identifier);
 	}
+
+	public ChordNode(DatagramChannel sock) throws Exception
+	{
+		sock = sock;
+		sockAddr = (InetSocketAddress)sock.socket().getRemoteSocketAddress();
+		
+		byte[] identifier = Arrays.copyOf(sockAddr.getAddress().getAddress(), 6);
+		identifier[4] = (byte)((sockAddr.getPort() >> 8) & 0xFF);
+		identifier[5] = (byte)(sockAddr.getPort() & 0xFF);
+		hash = MessageDigest.getInstance("SHA").digest(identifier);
+	}
 	
-	public SocketChannel getSock()
+	public DatagramChannel getSock()
 	{
 		return sock;
 	}
@@ -57,19 +71,13 @@ public class ChordNode
 		return sockAddr.getPort();
 	}
 	
-	public void connect() throws Exception
+	public void disconnect()
 	{
-		sock = SocketChannel.open();
-		sock.configureBlocking(true);
-		sock.socket().setReuseAddress(true);
-		sock.connect();
-		
-		while(!sock.finishConnect())
-		{
-		}
+		sock.disconnect();
+		sock = null;
 	}
 	
-	public void writeMessage(MessageType type, ByteBuffer payload) throws Exception
+	public void sendMessage(MessageType type, ByteBuffer payload) throws Exception
 	{
 		ByteBuffer message = ByteBuffer.allocate(5 + payload.remaining());
 		message.order(ByteOrder.BIG_ENDIAN);
@@ -103,7 +111,6 @@ public class ChordNode
 		return message;
 	}
 	
-	
 	public boolean isBefore(ChordNode obj)
 	{
 		return isBefore(obj.hash);
@@ -112,8 +119,10 @@ public class ChordNode
 	public boolean isBefore(byte[] hash)
 	{
 		if (hash.length != this.hash.length)
+		{
 			throw new Exception("mismatched hash length");
-		return Arrays.compareTo(this.hash, hash) < 0;
+		}
+		return (Arrays.compareTo(this.hash, hash) < 0);
 	}
 	
 	public boolean isAfter(byte[] hash)
@@ -134,6 +143,34 @@ public class ChordNode
 	public boolean isSame(byte[] hash)
 	{
 		return Arrays.equals(hash, this.hash);
+	}
+	
+	
+	private static boolean isInRange(ChordNode variant, 
+		ChordNode lowerBound, boolean lowerBoundInclusive, 
+		ChordNode upperBound, boolean upperBoundInclusive)
+	{
+		isInRange(variant.getHash(), lowerBound, lowerBoundInclusive, upperBound, upperBoundInclusive);
+	} 
+	
+	private static boolean isInRange(byte[] variant, 
+		ChordNode lowerBound, boolean lowerBoundInclusive, 
+		ChordNode upperBound, boolean upperBoundInclusive)
+	{
+		if (upperBound.isBefore(lowerBound))
+		{
+			return (successor.isBefore(variant) || (upperBoundInclusive ? successor.isSame(variant) : false)) 
+				&& key.isAfter(variant) || (lowerBoundInclusive ? key.isSame(variant) : false);
+		}
+		else if (upperBound.isSame(lowerBound))
+		{
+			return variant.isSame(lowerBound);
+		}
+		else
+		{
+			return (key.isBefore(variant) || (lowerBoundInclusive ? key.isSame(variant) : false)) 
+			&& (successor.isAfter(variant) || (upperBoundInclusive ? successor.isSame(variant) : false)); 
+		}
 	}
 	
 	public enum MessageType {
