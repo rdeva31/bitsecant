@@ -290,7 +290,7 @@ public class ReliableServerSocket extends ServerSocket
      * @param endpoint     the socket.
      * @return the deregistered socket.
      */
-    private ReliableClientSocket removeClientSocket(SocketAddress endpoint)
+    public ReliableClientSocket removeClientSocket(SocketAddress endpoint)
     {
         synchronized (_clientSockTable) {
             ReliableClientSocket sock = (ReliableClientSocket) _clientSockTable.remove(endpoint);
@@ -303,6 +303,14 @@ public class ReliableServerSocket extends ServerSocket
 
             return sock;
         }
+    }
+    
+    public HashMap getClients()
+    {
+    	synchronized (_clientSockTable)
+    	{
+    		return new HashMap(_clientSockTable);
+    	}
     }
 
     private DatagramSocket _serverSock;
@@ -354,7 +362,7 @@ public class ReliableServerSocket extends ServerSocket
         }
     }
 
-    private class ReliableClientSocket extends ReliableSocket
+    public class ReliableClientSocket extends ReliableSocket
     {
         public ReliableClientSocket(DatagramSocket sock,
                                     SocketAddress endpoint)
