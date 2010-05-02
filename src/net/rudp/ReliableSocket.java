@@ -1778,7 +1778,7 @@ public class ReliableSocket extends Socket
     }
 
     protected DatagramSocket       _sock;
-    protected SocketAddress        _endpoint;
+    public SocketAddress        _endpoint;
     protected ReliableSocketInputStream  _in;
     protected ReliableSocketOutputStream _out;
 
