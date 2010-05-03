@@ -46,6 +46,11 @@ public class Chord
 		sock.bind(new InetSocketAddress(port));
 	}
 	
+	public ChordNode getKey()
+	{
+		return key;
+	}
+	
 	public void listen() throws Exception
 	{
 		//Stabilize timer task
