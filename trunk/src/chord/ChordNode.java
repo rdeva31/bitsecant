@@ -1,26 +1,20 @@
 package chord;
 
+import srudp.*;
 import java.io.*;
 import java.net.*;
 import java.nio.*;
-import net.rudp.*;
 import java.security.*;
 import java.util.*;
 
 public class ChordNode
 {
 	private byte[] hash;
-	private ReliableSocket sock;
-	private InetSocketAddress sockAddr;
-	private BufferedInputStream sockIn;
-	private BufferedOutputStream sockOut;
+	private RUDPSocket sock;
 
 	public ChordNode(InetAddress IPAddr, short port) throws Exception
 	{
-		sock = null;
-		sockAddr = new InetSocketAddress(IPAddr, port);
-		sockIn = null;
-		sockOut = null;
+		sock = new RUDPSocket(IPAddr, port);
 		
 		byte[] identifier = Arrays.copyOf(IPAddr.getAddress(), 6);
 		identifier[4] = (byte)((port >> 8) & 0xFF);
@@ -28,12 +22,9 @@ public class ChordNode
 		hash = MessageDigest.getInstance("SHA").digest(identifier);
 	}
 
-	public ChordNode(ReliableSocket sock) throws Exception
+	public ChordNode(RUDPSocket sock) throws Exception
 	{
 		this.sock = sock;
-		sockAddr = (InetSocketAddress)sock.getRemoteSocketAddress();
-		sockIn = new BufferedInputStream(sock.getInputStream());
-		sockOut = new BufferedOutputStream(sock.getOutputStream());
 		
 		byte[] identifier = Arrays.copyOf(sockAddr.getAddress().getAddress(), 6);
 		identifier[4] = (byte)((sockAddr.getPort() >> 8) & 0xFF);
@@ -41,14 +32,9 @@ public class ChordNode
 		hash = MessageDigest.getInstance("SHA").digest(identifier);
 	}
 	
-	public ReliableSocket getSock()
+	public RUDPSocket getSock()
 	{
 		return sock;
-	}
-	
-	public InetSocketAddress getSockAddr()
-	{
-		return sockAddr;
 	}
 	
 	public byte[] getHash()
@@ -64,13 +50,6 @@ public class ChordNode
 	public short getPort()
 	{
 		return (short)sockAddr.getPort();
-	}
-	
-	public void connect() throws Exception
-	{
-		sock = new ReliableSocket(sockAddr.getAddress().getHostAddress(), sockAddr.getPort());
-		sockIn = new BufferedInputStream(sock.getInputStream());
-		sockOut = new BufferedOutputStream(sock.getOutputStream());
 	}
 	
 	public void close() throws Exception
