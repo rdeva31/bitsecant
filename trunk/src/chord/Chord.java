@@ -75,7 +75,7 @@ public class Chord
 					e.printStackTrace();
 				}
 			}
-		}, STABILIZE_TIMER_DELAY, STABILIZE_TIMER_DELAY);
+		}, 2, STABILIZE_TIMER_DELAY);
 
 		//CheckPredecessor timer task
 		(new Timer()).scheduleAtFixedRate(new TimerTask()
@@ -84,7 +84,7 @@ public class Chord
 			{
 				checkPredecessor();
 			}
-		}, CHECK_PREDECESSOR_TIMER_DELAY, CHECK_PREDECESSOR_TIMER_DELAY);
+		}, 2, CHECK_PREDECESSOR_TIMER_DELAY);
 
 		//FixFingers timer task
 		(new Timer()).scheduleAtFixedRate(new TimerTask()
@@ -101,50 +101,53 @@ public class Chord
 					e.printStackTrace();
 				}
 			}
-		}, FIX_FINGERS_TIMER_DELAY, FIX_FINGERS_TIMER_DELAY);
+		}, 2, FIX_FINGERS_TIMER_DELAY);
 
-		HashMap <SocketAddress, ReliableSocket> clients = sock.getClients();
-
-		for(ReliableSocket clientSock : clients.values())
+		while(true)
 		{
-			try
-			{
-				BufferedInputStream in = new BufferedInputStream(clientSock.getInputStream());
+			HashMap <SocketAddress, ReliableSocket> clients = sock.getClients();
 
-				if(in.available() > 0)
+			for(ReliableSocket clientSock : clients.values())
+			{
+				try
 				{
-					byte[] header = new byte[4];
-					in.read(header, 0, 4);
+					BufferedInputStream in = new BufferedInputStream(clientSock.getInputStream());
 
-					int messageLength = (((int)header[0] & 0xFF) << 24) + (((int)header[1] & 0xFF) << 16) +
-										(((int)header[2] & 0xFF) << 8) + ((int)header[0] & 0xFF);
-
-					byte[] message = new byte[messageLength];
-					in.read(message, 0, messageLength);
-
-					final byte[] messageCopy = message;
-					final ReliableServerSocket sockCopy = sock;
-					final ReliableSocket clientSockCopy = clientSock;
-
-					new Thread(new Runnable()
+					if(in.available() > 0)
 					{
-						public void run()
+						byte[] header = new byte[4];
+						in.read(header, 0, 4);
+
+						int messageLength = (((int)header[0] & 0xFF) << 24) + (((int)header[1] & 0xFF) << 16) +
+											(((int)header[2] & 0xFF) << 8) + ((int)header[0] & 0xFF);
+
+						byte[] message = new byte[messageLength];
+						in.read(message, 0, messageLength);
+
+						final byte[] messageCopy = message;
+						final ReliableServerSocket sockCopy = sock;
+						final ReliableSocket clientSockCopy = clientSock;
+
+						new Thread(new Runnable()
 						{
-							try
+							public void run()
 							{
-								handleMessage(ByteBuffer.wrap(messageCopy), new ChordNode(clientSockCopy));
+								try
+								{
+									handleMessage(ByteBuffer.wrap(messageCopy), new ChordNode(clientSockCopy));
+								}
+								catch (Exception e)
+								{
+									sockCopy.removeClientSocket(clientSockCopy._endpoint);
+								}
 							}
-							catch (Exception e)
-							{
-								sockCopy.removeClientSocket(clientSockCopy._endpoint);
-							}
-						}
-					}).start();
+						}).start();
+					}
 				}
-			}
-			catch (Exception e)
-			{
-				sock.removeClientSocket(clientSock._endpoint);
+				catch (Exception e)
+				{
+					sock.removeClientSocket(clientSock._endpoint);
+				}
 			}
 		}
 	}
@@ -153,6 +156,8 @@ public class Chord
 	{
 		predecessor = null;
 		successor = key;
+
+		System.out.println("CREATE [" + port + "] - Hash " + new String(key.getHash()));
 	}
 
 	public void join(ChordNode node) throws Exception
@@ -172,6 +177,8 @@ public class Chord
 		port = buffer.getShort();
 
 		successor = new ChordNode(InetAddress.getByAddress(IPAddress), port);
+		
+		System.out.println("JOIN [" + port + "] - Hash " + new String(key.getHash()) + " - Found successor " + port);
 	}
 
 	private ChordNode findSuccessor(byte[] hash) throws Exception

@@ -85,22 +85,35 @@ public class ChordNode
 		{
 			connect();
 		}
-	
-		int messageLength = (payload == null) ? 1 : 1 + payload.remaining();
-		byte[] message = new byte[4 + messageLength];
-		
-		message[0] = (byte)(messageLength >> 24);
-		message[1] = (byte)(messageLength >> 16);
-		message[2] = (byte)(messageLength >> 8);
-		message[3] = (byte)(messageLength);
-		
-		message[4] = (byte)type.valueOf();
-		
-		if(payload != null)
+
+		byte[] message;
+
+		if(payload == null)
 		{
-			payload.mark();
+			message = new byte[5];
+
+			message[0] = 0;
+			message[1] = 0;
+			message[2] = 0;
+			message[3] = 1;
+
+			message[4] = (byte)type.valueOf();
+		}
+		else
+		{
+			payload.flip();
+
+			int messageLength = 1 + payload.remaining();
+			message = new byte[4 + messageLength];
+
+			message[0] = (byte)(messageLength >> 24);
+			message[1] = (byte)(messageLength >> 16);
+			message[2] = (byte)(messageLength >> 8);
+			message[3] = (byte)(messageLength);
+
+			message[4] = (byte)type.valueOf();
+
 			payload.get(message, 5, messageLength - 1);
-			payload.reset();
 		}
 		
 		sockOut.write(message, 0, message.length);
