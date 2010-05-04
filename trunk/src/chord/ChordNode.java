@@ -17,10 +17,10 @@ public class ChordNode
 
 	public ChordNode(InetAddress IPAddr, short port) throws Exception
 	{
+		sock = null;
 		sockAddr = new InetSocketAddress(IPAddr, port);
-		sock = new ReliableSocket(IPAddr.getHostAddress(), port);
-		sockIn = new BufferedInputStream(sock.getInputStream());
-		sockOut = new BufferedOutputStream(sock.getOutputStream());
+		sockIn = null;
+		sockOut = null;
 		
 		byte[] identifier = Arrays.copyOf(IPAddr.getAddress(), 6);
 		identifier[4] = (byte)((port >> 8) & 0xFF);
@@ -30,7 +30,7 @@ public class ChordNode
 
 	public ChordNode(ReliableSocket sock) throws Exception
 	{
-		sock = sock;
+		this.sock = sock;
 		sockAddr = (InetSocketAddress)sock.getRemoteSocketAddress();
 		sockIn = new BufferedInputStream(sock.getInputStream());
 		sockOut = new BufferedOutputStream(sock.getOutputStream());
@@ -66,6 +66,13 @@ public class ChordNode
 		return (short)sockAddr.getPort();
 	}
 	
+	public void connect() throws Exception
+	{
+		sock = new ReliableSocket(sockAddr.getAddress().getHostAddress(), sockAddr.getPort());
+		sockIn = new BufferedInputStream(sock.getInputStream());
+		sockOut = new BufferedOutputStream(sock.getOutputStream());
+	}
+	
 	public void close() throws Exception
 	{
 		sock.close();
@@ -74,7 +81,12 @@ public class ChordNode
 	
 	public void sendMessage(MessageType type, ByteBuffer payload) throws Exception
 	{
-		int messageLength = 1 + payload.remaining();
+		if(sock == null)
+		{
+			connect();
+		}
+	
+		int messageLength = (payload == null) ? 1 : 1 + payload.remaining();
 		byte[] message = new byte[4 + messageLength];
 		
 		message[0] = (byte)(messageLength >> 24);
@@ -84,9 +96,12 @@ public class ChordNode
 		
 		message[4] = (byte)type.valueOf();
 		
-		payload.mark();
-		payload.get(message, 5, messageLength - 1);
-		payload.reset();
+		if(payload != null)
+		{
+			payload.mark();
+			payload.get(message, 5, messageLength - 1);
+			payload.reset();
+		}
 		
 		sockOut.write(message, 0, message.length);
 	}

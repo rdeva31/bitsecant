@@ -1,42 +1,64 @@
 package chord;
 
+import java.net.*;
+
 public class Implementation
 {
 	public static void main(String [] args) throws Exception
 	{
 		if (args == null || args.length == 0)
-			System.out.println("usage: <program> <num_clients_to_start> <port_of_first_client>");
-		
-		int numClients = Integer.parseInt(args[0]);
-		int port = Integer.parseInt(args[1]);
-		Chord first = null;
-		for (int c = 0; c < numClients; ++c)
 		{
-			final Chord chord = new Chord(port++);
-			
-			if (first == null)
+			System.out.println("usage: <program> <num_clients_to_start> <port_of_first_client>");
+			return;
+		}
+
+		int numClients = Integer.parseInt(args[0]);
+		final int port = Integer.parseInt(args[1]);
+
+		for (int c = 0; c < numClients; c++)
+		{
+			final int curPort = port + c;
+
+			if (c == 0)
 			{
-				first = chord;
-			}
-			
-			final Chord firstChord = first;
-			
-			new Thread(new Runnable()
-			{
-				public void run()
+				new Thread(new Runnable()
 				{
-					try
+					public void run()
 					{
-						chord.join(firstChord.getKey());
-						chord.listen();
+						try
+						{
+							Chord chord = new Chord(curPort);
+							chord.create();
+							chord.listen();
+						}
+						catch (Exception e)
+						{
+							System.out.println("Exception [" + curPort + "] : " + e);
+							e.printStackTrace();
+						}
 					}
-					catch (Exception e)
+				}, "thread" + c).start();
+			}
+			else
+			{
+				new Thread(new Runnable()
+				{
+					public void run()
 					{
-						System.out.println("Exception: " + e);
-						e.printStackTrace();
+						try
+						{
+							Chord chord = new Chord(curPort);
+							chord.join(new ChordNode(InetAddress.getLocalHost(), (short)port));
+							chord.listen();
+						}
+						catch (Exception e)
+						{
+							System.out.println("Exception [" + curPort + "] : " + e);
+							e.printStackTrace();
+						}
 					}
-				}
-			}).run();
+				}, "thread" + c).start();
+			}
 		}
 	}
 }
