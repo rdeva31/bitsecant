@@ -163,6 +163,8 @@ public class Chord
 	public void join(ChordNode node) throws Exception
 	{
 		predecessor = null;
+		
+		System.out.println("START JOIN [" + port + "]");
 
 		ByteBuffer buffer = ByteBuffer.allocate(20);
 		buffer.put(key.getHash());
