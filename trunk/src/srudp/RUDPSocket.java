@@ -9,7 +9,7 @@ import java.util.*;
 public class RUDPSocket
 {
 	private DatagramChannel sock;
-	private SocketAddress sockAddr;
+	private InetSocketAddress sockAddr;
 	private Selector select;
 
 	public RUDPSocket(InetAddress IPAddr, int port) throws Exception
@@ -17,9 +17,16 @@ public class RUDPSocket
 		sock = DatagramChannel.open();
 		sock.configureBlocking(false);
 		sockAddr = new InetSocketAddress(IPAddr, port);
-
-		select = Selector.open();
-		sock.register(select, SelectionKey.OP_READ);
+	}
+	
+	public InetSocketAddress getSockAddr()
+	{
+		return sockAddr;
+	}
+	
+	public void close() throws Exception
+	{
+		sock.close();
 	}
 
 	public void write(byte[] payload) throws Exception
@@ -30,18 +37,32 @@ public class RUDPSocket
 		packet.put(hash);
 		packet.flip();
 
-		int retryCount = 0;
+		Selector select = null;
+		
+		while(select == null)
+		{
+			try
+			{
+				select = Selector.open();
+			}
+			catch (Exception e)
+			{
+			}
+		}
+		
+		SelectionKey key = sock.register(select, SelectionKey.OP_READ);
 
+		int retryCount = 0;
 		while(retryCount < 3)
 		{
 			packet.position(0);
 			while(sock.send(packet, sockAddr) == 0)
 			{
 			}
-
+			
 			select.select(100);
+			
 			Iterator it = select.selectedKeys().iterator();
-
 			if(it.hasNext())
 			{
 				SelectionKey selected = (SelectionKey)it.next();
@@ -57,6 +78,8 @@ public class RUDPSocket
 
 					if(response.equals(ByteBuffer.wrap(hash)))
 					{
+						selected.cancel();
+						select.close();
 						return;
 					}
 				}
@@ -64,6 +87,9 @@ public class RUDPSocket
 
 			retryCount++;
 		}
+		
+		key.cancel();
+		select.close();
 	}
 
 	public ByteBuffer read() throws Exception
@@ -93,7 +119,7 @@ public class RUDPSocket
 			{
 				ByteBuffer response = ByteBuffer.wrap(hash);
 				sock.send(response, sockAddr);
-
+				
 				return ByteBuffer.wrap(payload);
 			}
 		}
