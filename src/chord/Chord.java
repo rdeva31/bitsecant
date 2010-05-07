@@ -10,14 +10,15 @@ import java.math.BigInteger;
 public class Chord
 {
 	private final int FINGER_TABLE_SIZE = 160;
-	private final int STABILIZE_TIMER_DELAY = 10*1000; //milliseconds
-	private final int CHECK_PREDECESSOR_TIMER_DELAY = 10*1000; //milliseconds
-	private final int FIX_FINGERS_TIMER_DELAY = 30*1000; //milliseconds
+	private final int STABILIZE_TIMER_DELAY = 5*1000; //milliseconds
+	private final int CHECK_PREDECESSOR_TIMER_DELAY = 5*1000; //milliseconds
+	private final int FIX_FINGERS_TIMER_DELAY = 100; //milliseconds
 
 	private int port;
 	private Map<String, ChordData> dataMap;
 	private List<ChordNode> fingerTable;
-	private ChordNode predecessor, successor, key;
+	private int nextFingerToFix;
+	private ChordNode predecessor, key;
 	private RUDPServerSocket sock;
 
 
@@ -38,19 +39,21 @@ public class Chord
 		this.port = port;
 		key = new ChordNode(InetAddress.getLocalHost(), (short)port);
 		predecessor = null;
-		successor = key;
 
 		fingerTable = new ArrayList<ChordNode>(FINGER_TABLE_SIZE);
 
 		for (int i = 0; i < FINGER_TABLE_SIZE; i++)
 		{
-			fingerTable.add(i, key);
+			fingerTable.add(key);
 		}
+		
+		nextFingerToFix = 0;
 
 		dataMap = new HashMap<String, ChordData>();
 
 		//Setting up the listening socket
 		sock = new RUDPServerSocket(port);
+		
 	}
 
 	public ChordNode getKey()
@@ -67,7 +70,7 @@ public class Chord
 			{
 				try
 				{
-					System.out.println("STABILIZE [" + port + "]");
+					//System.out.println("STABILIZE [" + port + "]");
 					stabilize();
 				}
 				catch (Exception e)
@@ -94,7 +97,7 @@ public class Chord
 			{
 				try
 				{
-					System.out.println("FIXFINGERS [" + port + "]");
+					//System.out.println("FIXFINGERS [" + port + "]");
 					fixFingers();
 				}
 				catch (Exception e)
@@ -118,7 +121,7 @@ public class Chord
 			message.flip();
 			
 			byte temp = message.get();
-			System.out.println("MESSAGE [" + port + "] : " + temp);
+			//System.out.println("MESSAGE [" + port + "] : " + temp);
 			message.position(0);
 
 			new Thread(new Runnable()
@@ -142,9 +145,8 @@ public class Chord
 	public void create() throws Exception
 	{
 		predecessor = null;
-		successor = key;
 
-		System.out.println("CREATE [" + port + "] - Hash " + new String(key.getHash()));
+		System.out.println("CREATE [" + port + "] - Hash " + key.getHashString());
 	}
 
 	public void join(ChordNode node) throws Exception
@@ -169,16 +171,16 @@ public class Chord
 		buffer.get(IPAddress);
 		port = buffer.getShort();
 
-		successor = new ChordNode(InetAddress.getByAddress(IPAddress), port);
+		fingerTable.set(0, new ChordNode(InetAddress.getByAddress(IPAddress), port));
 		
-		System.out.println("JOIN [" + this.port + "] - Hash " + new String(key.getHash()) + " - Found successor " + InetAddress.getByAddress(IPAddress) + ":" + port);
+		System.out.println("JOIN [" + this.port + "] - Hash " + key.getHashString() + " - Found successor [" + port + "]");
 	}
 
 	private ChordNode findSuccessor(byte[] hash) throws Exception
 	{
-		if (ChordNode.isInRange(hash, key.getHash(), false, successor.getHash(), true))
+		if (ChordNode.isInRange(hash, key.getHash(), false, fingerTable.get(0).getHash(), true))
 		{
-			return successor;
+			return fingerTable.get(0);
 		}
 		else
 		{
@@ -186,7 +188,7 @@ public class Chord
 			
 			if(closest.equals(key))
 			{
-				return successor;
+				return fingerTable.get(0);
 			}
 
 			ByteBuffer buffer = ByteBuffer.allocate(20);
@@ -211,7 +213,7 @@ public class Chord
 
 	private ChordNode findClosestNode(byte[] hash)
 	{
-		for (int i = (FINGER_TABLE_SIZE - 1); i > 0; i--)
+		for (int i = (FINGER_TABLE_SIZE - 1); i >= 0; i--)
 		{
 			ChordNode temp = fingerTable.get(i);
 			if (ChordNode.isInRange(temp.getHash(), key.getHash(), false, hash, false))
@@ -225,15 +227,15 @@ public class Chord
 
 	private void stabilize() throws Exception
 	{
-		if (successor == null)
+		if (fingerTable.get(0) == null)
 		{
 			return;
 		}
 
-		successor.connect();
-		successor.sendMessage(ChordNode.MessageType.PREDECESSOR, null);
-		ByteBuffer response = successor.getResponse();
-		successor.close();
+		fingerTable.get(0).connect();
+		fingerTable.get(0).sendMessage(ChordNode.MessageType.PREDECESSOR, null);
+		ByteBuffer response = fingerTable.get(0).getResponse();
+		fingerTable.get(0).close();
 		
 		byte[] IPAddress = new byte[4];
 		short port;
@@ -246,14 +248,23 @@ public class Chord
 		//Predecessor was null for our successor
 		if((IPAddress[0] | IPAddress[1] | IPAddress[2] | IPAddress[3]) == 0)
 		{
+			ByteBuffer buffer = ByteBuffer.allocate(6);
+			buffer.order(ByteOrder.BIG_ENDIAN);
+			buffer.put(key.getIPAddress().getAddress());
+			buffer.putShort(key.getPort());
+
+			fingerTable.get(0).connect();
+			fingerTable.get(0).sendMessage(ChordNode.MessageType.NOTIFY, buffer);
+			fingerTable.get(0).close();
+			
 			return;
 		}
 		
 		ChordNode node = new ChordNode(InetAddress.getByAddress(IPAddress), port);
 
-		if (ChordNode.isInRange(node.getHash(), key.getHash(), false, successor.getHash(), false))
+		if (ChordNode.isInRange(node.getHash(), key.getHash(), false, fingerTable.get(0).getHash(), false))
 		{
-			successor = node;
+			fingerTable.set(0, node);
 		}
 		else
 		{
@@ -262,14 +273,17 @@ public class Chord
 			buffer.put(key.getIPAddress().getAddress());
 			buffer.putShort(key.getPort());
 
-			successor.connect();
-			successor.sendMessage(ChordNode.MessageType.NOTIFY, buffer);
-			successor.close();
+			fingerTable.get(0).connect();
+			fingerTable.get(0).sendMessage(ChordNode.MessageType.NOTIFY, buffer);
+			fingerTable.get(0).close();
 		}
+
 	}
 
 	private void notify(ChordNode node) throws Exception
 	{
+		System.out.println("NOTIFY [" + port + " from " + node.getPort() + "]");
+		
 		if ((predecessor == null) || ChordNode.isInRange(node.getHash(), predecessor.getHash(), false, key.getHash(), false))
 		{
 			predecessor = node;
@@ -280,29 +294,28 @@ public class Chord
 	private void fixFingers() throws Exception
 	{
 		BigInteger hashNumCeil = new BigInteger("2").pow(160);
+		BigInteger nextHashNum = new BigInteger("2").pow(nextFingerToFix).add(new BigInteger(key.getHash())).mod(hashNumCeil);
+		byte[] nextHashNumBytes = nextHashNum.toByteArray();
+		byte[] nextHash = new byte[20];
 		
-		for (int i = 1; i < FINGER_TABLE_SIZE; ++i)
+		if(nextHashNumBytes.length <= 20)
 		{
-			BigInteger nextHashNum = new BigInteger("2").pow(i-1).add(new BigInteger(key.getHash())).mod(hashNumCeil);
-			byte[] nextHashNumBytes = nextHashNum.toByteArray();
-			byte[] nextHash = new byte[20];
-			
-			if(nextHashNumBytes.length < 20)
-			{
-				System.arraycopy(nextHashNumBytes, 0, nextHash, 20 - nextHashNumBytes.length, nextHashNumBytes.length);
-			}
-			else
-			{
-				System.arraycopy(nextHashNumBytes, 0, nextHash, 0, 20);
-			}
-			
-			ChordNode node = findSuccessor(nextHash);
-			
-			if(!node.equals(fingerTable.get(i)))
-			{
-				fingerTable.add(i, node);
-			}
+			System.arraycopy(nextHashNumBytes, 0, nextHash, 20 - nextHashNumBytes.length, nextHashNumBytes.length);
 		}
+		else
+		{
+			System.arraycopy(nextHashNumBytes, nextHashNumBytes.length - 20, nextHash, 0, 20);
+		}
+
+		ChordNode node = findSuccessor(nextHash);
+		
+		
+		if(!node.equals(fingerTable.get(nextFingerToFix)))
+		{
+			fingerTable.set(nextFingerToFix, node);
+		}
+		
+		nextFingerToFix = (nextFingerToFix + 1) % FINGER_TABLE_SIZE;
 	}
 
 	private void checkPredecessor()
@@ -312,7 +325,7 @@ public class Chord
 			ByteBuffer buffer = ByteBuffer.allocate(6);
 			buffer.order(ByteOrder.BIG_ENDIAN);
 			buffer.put(key.getIPAddress().getAddress());
-			buffer.putShort((short)key.getPort());
+			buffer.putShort(key.getPort());
 
 			predecessor.connect();
 			predecessor.sendMessage(ChordNode.MessageType.PING, buffer);
@@ -383,10 +396,10 @@ public class Chord
 			{
 				byte[] IPAddress = new byte[4];
 				short port;
-
+				
 				buffer.get(IPAddress);
 				port = buffer.getShort();
-
+				
 				ChordNode possiblePredecessor = new ChordNode(InetAddress.getByAddress(IPAddress), port);
 				notify(possiblePredecessor);
 
@@ -456,5 +469,25 @@ public class Chord
 			}
 		}
 	
+	}
+	
+	
+	private static String getHashString(byte[] hash)
+	{
+		String hashString = "[" + hash.length + "] ";
+		
+		for(int b = 0; b < hash.length; b++)
+		{
+			int value = (int)hash[b] & 0xFF;
+			
+			if(value < 0x10)
+			{
+				hashString += "0";
+			}
+			
+			hashString += Integer.toHexString(value);
+		}
+		
+		return hashString.toUpperCase();
 	}
 }
