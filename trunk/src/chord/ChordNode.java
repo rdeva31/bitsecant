@@ -6,6 +6,7 @@ import java.net.*;
 import java.nio.*;
 import java.security.*;
 import java.util.*;
+import java.util.concurrent.locks.*;
 
 public class ChordNode
 {
@@ -13,17 +14,20 @@ public class ChordNode
 	private RUDPSocket sock;
 	private InetAddress IPAddr;
 	private short port;
+	private Lock socketLock;
 
 	public ChordNode(InetAddress IPAddr, short port) throws Exception
 	{
 		sock = null;
 		this.IPAddr = IPAddr;
 		this.port = port;
-		
+
 		byte[] identifier = Arrays.copyOf(IPAddr.getAddress(), 6);
 		identifier[4] = (byte)((port >> 8) & 0xFF);
 		identifier[5] = (byte)(port & 0xFF);
-		hash = MessageDigest.getInstance("SHA").digest(identifier);
+		hash = MessageDigest.getInstance("SHA-1").digest(identifier);
+
+		socketLock = new ReentrantLock();
 	}
 
 	public ChordNode(RUDPSocket sock) throws Exception
@@ -31,50 +35,87 @@ public class ChordNode
 		this.sock = sock;
 		this.IPAddr = sock.getSockAddr().getAddress();
 		this.port = (short)sock.getSockAddr().getPort();
-		
+
 		byte[] identifier = Arrays.copyOf(sock.getSockAddr().getAddress().getAddress(), 6);
 		identifier[4] = (byte)((sock.getSockAddr().getPort() >> 8) & 0xFF);
 		identifier[5] = (byte)(sock.getSockAddr().getPort() & 0xFF);
-		hash = MessageDigest.getInstance("SHA").digest(identifier);
+		hash = MessageDigest.getInstance("SHA-1").digest(identifier);
+
+		socketLock = new ReentrantLock();
 	}
-	
+
 	public RUDPSocket getSock()
 	{
 		return sock;
 	}
-	
+
 	public InetAddress getIPAddress()
 	{
 		return IPAddr;
 	}
-	
+
 	public short getPort()
 	{
 		return port;
 	}
-	
+
 	public byte[] getHash()
 	{
 		return hash;
 	}
-	
+
+	public String getHashString()
+	{
+		String hashString = "[" + hash.length + "] ";
+
+		for(int b = 0; b < hash.length; b++)
+		{
+			int value = (int)hash[b] & 0xFF;
+
+			if(value < 0x10)
+			{
+				hashString += "0";
+			}
+
+			hashString += Integer.toHexString(value);
+		}
+
+		return hashString.toUpperCase();
+	}
+
 	public void connect() throws Exception
 	{
-		if(sock == null)
+		try
 		{
-			sock = new RUDPSocket(IPAddr, port);
+			socketLock.lock();
+			if(sock == null)
+			{
+				sock = new RUDPSocket(IPAddr, port);
+			}
+		}
+		catch (Exception e)
+		{
+			socketLock.unlock();
+			throw e;
 		}
 	}
-	
+
 	public void close() throws Exception
 	{
-		if(sock != null)
+		try
 		{
-			sock.close();
-			sock = null;
+			if(sock != null)
+			{
+				sock.close();
+				sock = null;
+			}
+		}
+		finally
+		{
+			socketLock.unlock();
 		}
 	}
-	
+
 	public void sendMessage(MessageType type, ByteBuffer payload) throws Exception
 	{
 		byte[] message;
@@ -89,20 +130,20 @@ public class ChordNode
 			payload.flip();
 
 			int messageLength = 1 + payload.remaining();
-			
+
 			message = new byte[messageLength];
 			message[0] = (byte)type.valueOf();
 			payload.get(message, 1, messageLength - 1);
 		}
-		
+
 		sock.write(message);
 	}
-	
+
 	public ByteBuffer getResponse() throws Exception
 	{
 		return sock.read();
 	}
-	
+
 	@Override
 	public boolean equals(Object obj)
 	{
@@ -121,40 +162,59 @@ public class ChordNode
 		}
 		return true;
 	}
-	
+
 	private static int compare(byte[] hash1, byte[] hash2)
 	{
-		for (int c = 0; c < hash1.length; ++c)
+		for (int c = 0; c < hash1.length; c++)
 		{
-			if (hash1[c] > hash2[c])
+			int a = ((int)hash1[c]) & 0xff;
+			int b = ((int)hash2[c]) & 0xff;
+
+			if (a > b)
+			{
 				return 1;
-			else if (hash1[c] < hash2[c])
+			}
+			else if (a < b)
+			{
 				return -1;
+			}
 		}
-		
+
 		return 0;
-	} 
-	
+	}
+
 	public static boolean isInRange(byte[] variant,
-		byte[] lowerBound, boolean lowerBoundInclusive, 
+		byte[] lowerBound, boolean lowerBoundInclusive,
 		byte[] upperBound, boolean upperBoundInclusive)
 	{
-		if (ChordNode.compare(upperBound, lowerBound) < 0)
+		int UL = ChordNode.compare(upperBound, lowerBound);
+		int UV = ChordNode.compare(upperBound, variant);
+		int LV = ChordNode.compare(lowerBound, variant);
+
+		boolean UgV = upperBoundInclusive ? UV >= 0 : UV > 0;
+		boolean UlV = upperBoundInclusive ? UV <= 0 : UV < 0;
+		boolean LgV = lowerBoundInclusive ? LV >= 0 : LV > 0;
+		boolean LlV = lowerBoundInclusive ? LV <= 0 : LV < 0;
+
+		if(UL < 0)
 		{
-			return (ChordNode.compare(upperBound, variant) < 0 || (upperBoundInclusive ? ChordNode.compare(upperBound, variant) == 0 : false)) 
-			&& (ChordNode.compare(lowerBound, variant) > 0 || (lowerBoundInclusive ? ChordNode.compare(lowerBound, variant) == 0 : false));
+			return (UgV && LgV) || (UlV && LlV);
 		}
-		else if (ChordNode.compare(upperBound, lowerBound) == 0)
+		else if(UL == 0)
 		{
-			return ChordNode.compare(variant, lowerBound) == 0;
+			return (upperBoundInclusive && lowerBoundInclusive) ? true : (UV != 0);
 		}
 		else
 		{
-			return (ChordNode.compare(lowerBound, variant) < 0 || (lowerBoundInclusive ? ChordNode.compare(lowerBound, variant) == 0 : false)) 
-			&& (ChordNode.compare(upperBound, variant) > 0 || (upperBoundInclusive ? ChordNode.compare(upperBound, variant) == 0 : false)); 
+			return UgV && LlV;
 		}
 	}
-	
+
+	public String toString()
+	{
+		return port + ":" + getHashString();
+	}
+
 	public enum MessageType {
 		PING(0),
 		PING_REPLY(1),
@@ -167,18 +227,18 @@ public class ChordNode
 		GET_REPLY(8),
 		PUT(9),
 		ADD(10);
-		
+
 		private int value;
 		private MessageType(int value)
 		{
 			this.value = value;
 		}
-		
+
 		public int valueOf()
 		{
 			return value;
 		}
-		
+
 		public static MessageType fromInt(int val) throws Exception
 		{
 			for (MessageType m : MessageType.values())
@@ -188,7 +248,7 @@ public class ChordNode
 					return m;
 				}
 			}
-			
+
 			throw new Exception("Unrecognized enum value: " + val);
 		}
 	};
