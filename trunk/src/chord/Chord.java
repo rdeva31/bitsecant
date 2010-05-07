@@ -149,6 +149,33 @@ public class Chord
 		System.out.println("CREATE [" + port + "] - Hash " + key.getHashString());
 	}
 
+	public byte[] get(byte[] hash) throws Exception
+	{
+		ChordNode node = findSuccessor(hash);
+		node.connect();
+		node.sendMessage(ChordNode.MessageType.GET, ByteBuffer.wrap(hash));
+		ByteBuffer response = node.getResponse();
+		node.close();
+
+		if (ChordNode.MessageType.fromInt((int)response.get()) != ChordNode.MessageType.GET_REPLY)
+			throw new Exception("expected GET_REPLY");
+
+		byte[] toReturn = new byte[response.remaining()];
+		response.get(toReturn);
+		return toReturn;
+	}
+
+	public void put(byte[] hash, byte[] data, boolean append) throws Exception
+	{
+		//TODO build in resiliency
+		ChordNode node = findSuccessor(hash);
+		node.connect();
+		node.sendMessage(append ? ChordNode.MessageType.APPEND : ChordNode.MessageType.PUT,
+				ByteBuffer.wrap(hash));
+		node.close();
+
+	}
+
 	public void join(ChordNode node) throws Exception
 	{
 		predecessor = null;
@@ -446,7 +473,7 @@ public class Chord
 
 				break;
 			}
-			case ADD:
+			case APPEND:
 			{
 				byte[] hash = new byte[20];
 				byte[] data = new byte[buffer.remaining() - 20];
@@ -467,6 +494,8 @@ public class Chord
 
 				break;
 			}
+			default:
+				throw new Exception("unexpected message");
 		}
 	
 	}
