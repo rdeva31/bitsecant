@@ -226,7 +226,7 @@ public class ChordNode
 		GET(7),
 		GET_REPLY(8),
 		PUT(9),
-		ADD(10);
+		APPEND(10);
 
 		private int value;
 		private MessageType(int value)
