@@ -60,7 +60,8 @@ public class RUDPSocket
 			{
 			}
 			
-			select.select(100);
+			select.select(500);
+			
 			
 			Iterator it = select.selectedKeys().iterator();
 			if(it.hasNext())
@@ -88,6 +89,8 @@ public class RUDPSocket
 			retryCount++;
 		}
 		
+		System.out.println("[DROPPED] To Port: " + sockAddr.getPort() + " Message ID: " + ((int)payload[0] & 0xFF));
+		
 		key.cancel();
 		select.close();
 	}
@@ -95,11 +98,12 @@ public class RUDPSocket
 	public ByteBuffer read() throws Exception
 	{
 		ByteBuffer packet = ByteBuffer.allocate(64*1024);
-
+		InetSocketAddress returnAddr;
+		
 		while(true)
 		{
 			packet.clear();
-			while(sock.receive(packet) == null)
+			while((returnAddr = (InetSocketAddress)sock.receive(packet)) == null)
 			{
 			}
 			packet.flip();
@@ -118,7 +122,9 @@ public class RUDPSocket
 			if(Arrays.equals(hash, calcHash))
 			{
 				ByteBuffer response = ByteBuffer.wrap(hash);
-				sock.send(response, sockAddr);
+				while(sock.send(response, returnAddr) == 0)
+				{
+				}
 				
 				return ByteBuffer.wrap(payload);
 			}

@@ -13,6 +13,7 @@ public class RUDPServerSocket
 	public RUDPServerSocket(int port) throws Exception
 	{
 		sock = DatagramChannel.open();
+		sock.configureBlocking(true);
 		sock.socket().bind(new InetSocketAddress(port));
 	}
 
@@ -39,8 +40,6 @@ public class RUDPServerSocket
 
 			if(Arrays.equals(hash, calcHash))
 			{
-				int rand = (int)(Math.random() * 2.0) % 2;
-
 				ByteBuffer response = ByteBuffer.wrap(hash);
 				sock.send(response, returnAddr);
 
