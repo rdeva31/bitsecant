@@ -9,18 +9,21 @@ import java.math.BigInteger;
 
 public class Chord
 {
+	private final int HASH_SIZE = 20;
 	private final int FINGER_TABLE_SIZE = 160;
 	private final int STABILIZE_TIMER_DELAY = 5*1000; //milliseconds
 	private final int CHECK_PREDECESSOR_TIMER_DELAY = 5*1000; //milliseconds
 	private final int FIX_FINGERS_TIMER_DELAY = 100; //milliseconds
+	private final int RESILIENCY = 3; 
+	private final int SUCCESSOR_LIST_SIZE = 3; 
 
 	private int port;
 	private Map<String, ChordData> dataMap;
 	private List<ChordNode> fingerTable;
+	private List<ChordNode> successorList;
 	private int nextFingerToFix;
 	private ChordNode predecessor, key;
 	private RUDPServerSocket sock;
-
 
 	public static void main(String[] args)
 	{
@@ -42,14 +45,21 @@ public class Chord
 
 		fingerTable = new ArrayList<ChordNode>(FINGER_TABLE_SIZE);
 
-		for (int i = 0; i < FINGER_TABLE_SIZE; i++)
+		for (int f = 0; f < FINGER_TABLE_SIZE; f++)
 		{
 			fingerTable.add(key);
 		}
-		
-		nextFingerToFix = 0;
+
+		successorList = new ArrayList<ChordNode>(SUCCESSOR_LIST_SIZE);
+
+		for (int s = 0; s < SUCCESSOR_LIST_SIZE; s++)
+		{
+			successorList.add(key);
+		}
 
 		dataMap = new HashMap<String, ChordData>();
+		
+		nextFingerToFix = 0;
 
 		//Setting up the listening socket
 		sock = new RUDPServerSocket(port);
@@ -152,8 +162,12 @@ public class Chord
 	public byte[] get(byte[] hash) throws Exception
 	{
 		ChordNode node = findSuccessor(hash);
+		
+		ByteBuffer message = ByteBuffer.allocate(HASH_SIZE);
+		message.put(hash);
+		
 		node.connect();
-		node.sendMessage(ChordNode.MessageType.GET, ByteBuffer.wrap(hash));
+		node.sendMessage(ChordNode.MessageType.GET, message);
 		ByteBuffer response = node.getResponse();
 		node.close();
 
@@ -167,12 +181,25 @@ public class Chord
 
 	public void put(byte[] hash, byte[] data, boolean append) throws Exception
 	{
-		//TODO build in resiliency
+		
 		ChordNode node = findSuccessor(hash);
 		node.connect();
-		node.sendMessage(append ? ChordNode.MessageType.APPEND : ChordNode.MessageType.PUT,
-				ByteBuffer.wrap(hash));
+		ByteBuffer toSend = ByteBuffer.allocate(HASH_SIZE + data.length);
+		toSend.put(hash);
+		toSend.put(data);
+		node.sendMessage(append ? ChordNode.MessageType.APPEND : ChordNode.MessageType.PUT, toSend);
 		node.close();
+		
+		//add resiliency
+		ChordNode prevNode = findSuccessor(node.getHash());
+		for (int c = 0; c < RESILIENCY; ++c)
+		{
+			prevNode.connect();
+			prevNode.sendMessage(append ? ChordNode.MessageType.APPEND : ChordNode.MessageType.PUT, toSend);
+			prevNode.close();
+			
+			prevNode = findSuccessor(prevNode.getHash());
+		}
 
 	}
 
@@ -182,7 +209,7 @@ public class Chord
 		
 		System.out.println("START JOIN [" + port + "]");
 
-		ByteBuffer buffer = ByteBuffer.allocate(20);
+		ByteBuffer buffer = ByteBuffer.allocate(HASH_SIZE);
 		buffer.put(key.getHash());
 
 		node.connect();
@@ -218,7 +245,7 @@ public class Chord
 				return fingerTable.get(0);
 			}
 
-			ByteBuffer buffer = ByteBuffer.allocate(20);
+			ByteBuffer buffer = ByteBuffer.allocate(HASH_SIZE);
 			buffer.put(hash);
 
 			closest.connect();
@@ -309,7 +336,7 @@ public class Chord
 
 	private void notify(ChordNode node) throws Exception
 	{
-		System.out.println("NOTIFY [" + port + " from " + node.getPort() + "]");
+		//System.out.println("NOTIFY [" + port + " from " + node.getPort() + "]");
 		
 		if ((predecessor == null) || ChordNode.isInRange(node.getHash(), predecessor.getHash(), false, key.getHash(), false))
 		{
@@ -323,15 +350,15 @@ public class Chord
 		BigInteger hashNumCeil = new BigInteger("2").pow(160);
 		BigInteger nextHashNum = new BigInteger("2").pow(nextFingerToFix).add(new BigInteger(key.getHash())).mod(hashNumCeil);
 		byte[] nextHashNumBytes = nextHashNum.toByteArray();
-		byte[] nextHash = new byte[20];
+		byte[] nextHash = new byte[HASH_SIZE];
 		
-		if(nextHashNumBytes.length <= 20)
+		if(nextHashNumBytes.length <= HASH_SIZE)
 		{
-			System.arraycopy(nextHashNumBytes, 0, nextHash, 20 - nextHashNumBytes.length, nextHashNumBytes.length);
+			System.arraycopy(nextHashNumBytes, 0, nextHash, HASH_SIZE - nextHashNumBytes.length, nextHashNumBytes.length);
 		}
 		else
 		{
-			System.arraycopy(nextHashNumBytes, nextHashNumBytes.length - 20, nextHash, 0, 20);
+			System.arraycopy(nextHashNumBytes, nextHashNumBytes.length - HASH_SIZE, nextHash, 0, HASH_SIZE);
 		}
 
 		ChordNode node = findSuccessor(nextHash);
@@ -362,12 +389,48 @@ public class Chord
 		catch (Exception e)
 		{
 			predecessor = null;
+			/*
+			LinkedList<ByteBuffer> sendList = new LinkedList<ByteBuffer>();
+			
+			synchronized(dataMap)
+			{
+				for(ChordData data : dataMap.values())
+				{
+					if(ChordNode.compare(data.getHash(), predecessor.getHash()) < 0)
+					{
+						ByteBuffer toSend = ByteBuffer.allocate(HASH_SIZE + data.getData().length);
+						toSend.put(data.getHash());
+						toSend.put(data.getData());
+						predData.add(toSend);
+					}
+				}
+			}
+			
+			synchronized(successorList)
+			{
+				for(ChordNode node : successorList)
+				{
+					try
+					{
+						node.connect();
+						for(ChordData data : predData)
+						{
+							node.sendMessage(ChordNode.MessageType.PUT, toSend);
+						}
+						node.close();
+					}
+					catch (Exception e)
+					{
+					}
+				}
+			}
+			*/
 		}
 	}
 
 	private void handleMessage(ByteBuffer buffer, ChordNode node) throws Exception
 	{
-		ChordNode.MessageType messageType = ChordNode.MessageType.fromInt((int)buffer.get());
+		ChordNode.MessageType messageType = ChordNode.MessageType.fromInt((int)buffer.get() & 0xFF);
 
 		switch (messageType)
 		{
@@ -381,7 +444,7 @@ public class Chord
 			}
 			case SUCCESSOR:
 			{
-				byte[] hash = new byte[20];
+				byte[] hash = new byte[HASH_SIZE];
 				buffer.get(hash);
 				ChordNode successor = findSuccessor(hash);
 
@@ -434,18 +497,22 @@ public class Chord
 			}
 			case GET:
 			{
-				byte[] hash = new byte[20];
+				byte[] hash = new byte[HASH_SIZE];
 				buffer.get(hash);
-
-				ChordData data = dataMap.get(new String(hash));
-
-				if (data == null)
+				ByteBuffer response = null;
+				
+				synchronized(dataMap)
 				{
-					throw new Exception("requested data not found");
-				}
+					ChordData data = dataMap.get(new String(hash));
 
-				ByteBuffer response = ByteBuffer.allocate(data.getData().length);
-				response.put(data.getData());
+					if (data == null)
+					{
+						throw new Exception("requested data not found");
+					}
+
+					response = ByteBuffer.allocate(data.getData().length);
+					response.put(data.getData());
+				}
 
 				node.connect();
 				node.sendMessage(ChordNode.MessageType.GET_REPLY, response);
@@ -455,42 +522,48 @@ public class Chord
 			}
 			case PUT:
 			{
-				byte[] hash = new byte[20];
-				byte[] data = new byte[buffer.remaining() - 20];
+				byte[] hash = new byte[HASH_SIZE];
+				byte[] data = new byte[buffer.remaining() - HASH_SIZE];
 				buffer.get(hash);
 				buffer.get(data);
 
-				ChordData existingData = dataMap.get(new String(hash));
+				synchronized(dataMap)
+				{
+					ChordData existingData = dataMap.get(new String(hash));
 
-				if(existingData == null)
-				{
-					dataMap.put(new String(hash), new ChordData(hash, data));
-				}
-				else
-				{
-					existingData.setData(data);
+					if(existingData == null)
+					{
+						dataMap.put(new String(hash), new ChordData(hash, data));
+					}
+					else
+					{
+						existingData.setData(data);
+					}
 				}
 
 				break;
 			}
 			case APPEND:
 			{
-				byte[] hash = new byte[20];
-				byte[] data = new byte[buffer.remaining() - 20];
+				byte[] hash = new byte[HASH_SIZE];
+				byte[] data = new byte[buffer.remaining() - HASH_SIZE];
 				buffer.get(hash);
 				buffer.get(data);
 
-				ChordData existingData = dataMap.get(new String(hash));
-
-				if (existingData == null)
+				synchronized(dataMap)
 				{
-					throw new Exception("existing data not found");
+					ChordData existingData = dataMap.get(new String(hash));
+
+					if (existingData == null)
+					{
+						throw new Exception("existing data not found");
+					}
+
+					byte[] newData = Arrays.copyOf(existingData.getData(), existingData.getData().length + data.length);
+					System.arraycopy(data, 0, newData, existingData.getData().length, data.length);
+
+					existingData.setData(newData);
 				}
-
-				byte[] newData = Arrays.copyOf(existingData.getData(), existingData.getData().length + data.length);
-				System.arraycopy(data, 0, newData, existingData.getData().length, data.length);
-
-				existingData.setData(newData);
 
 				break;
 			}
@@ -498,25 +571,5 @@ public class Chord
 				throw new Exception("unexpected message");
 		}
 	
-	}
-	
-	
-	private static String getHashString(byte[] hash)
-	{
-		String hashString = "[" + hash.length + "] ";
-		
-		for(int b = 0; b < hash.length; b++)
-		{
-			int value = (int)hash[b] & 0xFF;
-			
-			if(value < 0x10)
-			{
-				hashString += "0";
-			}
-			
-			hashString += Integer.toHexString(value);
-		}
-		
-		return hashString.toUpperCase();
 	}
 }
