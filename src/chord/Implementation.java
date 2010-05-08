@@ -1,25 +1,33 @@
 package chord;
 
 import java.net.*;
+import java.security.MessageDigest;
+import java.util.*;
 
 public class Implementation
 {
 	public static void main(String [] args) throws Exception
 	{
+	//NOOOOOOOOOOOOOOOOOOOOOOo I DONT WANT MAH THREADS TO DIE :(
+		List<Thread> threadList = new ArrayList<Thread>();
 		if (args == null || args.length == 0)
 		{
 			System.out.println("usage: <program> <num_clients_to_start> <port_of_first_client>");
 			return;
 		}
 
-		int numClients = Integer.parseInt(args[0]);
+		final int numClients = Integer.parseInt(args[0]);
 		final int port = Integer.parseInt(args[1]);
+		
+		final Chord first = new Chord(port);
+		first.create();
 
 		for (int c = 0; c < numClients; c++)
 		{
 			final int curPort = port + c;
-
-			if (c == 0)
+			final int cCopy = c;
+			
+			if(c == 0)
 			{
 				new Thread(new Runnable()
 				{
@@ -27,9 +35,7 @@ public class Implementation
 					{
 						try
 						{
-							Chord chord = new Chord(curPort);
-							chord.create();
-							chord.listen();
+							first.listen();
 						}
 						catch (Exception e)
 						{
@@ -41,7 +47,7 @@ public class Implementation
 			}
 			else
 			{
-				new Thread(new Runnable()
+				Thread t = new Thread(new Runnable()
 				{
 					public void run()
 					{
@@ -57,8 +63,43 @@ public class Implementation
 							e.printStackTrace();
 						}
 					}
-				}, "thread" + c).start();
+				}, "thread" + c);
+
+				t.start();
+				
+				threadList.add(t);
 			}
 		}
+		
+		final List<Thread> threadListCopy = threadList;
+		int threadToKill;
+		Scanner sc = new Scanner(System.in);
+		
+		System.out.print("kill which thread?");
+		threadToKill = sc.nextInt();
+		final int threadToKillCopy = threadToKill;
+		new Timer().schedule(new TimerTask()
+		{
+			public void run()
+			{
+				try
+				{
+				
+					first.put(MessageDigest.getInstance("SHA-1").digest("mudkipz".getBytes()), "I LIKE MUDKIPZ".getBytes(), false);
+					threadListCopy.remove(threadToKillCopy).stop();
+					new Timer().schedule(new TimerTask() 
+					{
+						public void run() {} //nothing to do
+					}, 5*1000);//give it time to fix ring
+					System.out.println(new String(first.get(MessageDigest.getInstance("SHA-1").digest("mudkipz".getBytes()))));
+				}
+				catch (Exception e)
+				{
+					System.out.println("Exception [MAIN] : " + e);
+					e.printStackTrace();
+				}
+			}
+		}, 1000 * 10);
 	}
+	
 }

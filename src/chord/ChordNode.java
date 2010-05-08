@@ -134,6 +134,9 @@ public class ChordNode
 			message = new byte[messageLength];
 			message[0] = (byte)type.valueOf();
 			payload.get(message, 1, messageLength - 1);
+			
+			payload.position(0);
+			payload.compact();
 		}
 
 		sock.write(message);

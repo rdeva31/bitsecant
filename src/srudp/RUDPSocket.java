@@ -93,6 +93,8 @@ public class RUDPSocket
 		
 		key.cancel();
 		select.close();
+		
+		throw new Exception("Dropped packet");
 	}
 
 	public ByteBuffer read() throws Exception
