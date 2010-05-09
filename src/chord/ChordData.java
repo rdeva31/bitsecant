@@ -25,4 +25,28 @@ public class ChordData
 	{
 		this.data = data;
 	}
+
+	public String getHashString()
+	{
+		String hashString = "";
+
+		for(int b = 0; b < hash.length; b++)
+		{
+			int value = (int)hash[b] & 0xFF;
+
+			if(value < 0x10)
+			{
+				hashString += "0";
+			}
+
+			hashString += Integer.toHexString(value);
+		}
+
+		return hashString.toUpperCase();
+	}
+
+	public String toString()
+	{
+		return getHashString() + " -> " + new String(data);
+	}
 }
