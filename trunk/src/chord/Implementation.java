@@ -8,7 +8,6 @@ public class Implementation
 {
 	public static void main(String [] args) throws Exception
 	{
-	//NOOOOOOOOOOOOOOOOOOOOOOo I DONT WANT MAH THREADS TO DIE :(
 		List<Thread> threadList = new ArrayList<Thread>();
 		if (args == null || args.length == 0)
 		{
@@ -92,6 +91,12 @@ public class Implementation
 						public void run() {} //nothing to do
 					}, 5*1000);//give it time to fix ring
 					System.out.println(new String(first.get(MessageDigest.getInstance("SHA-1").digest("mudkipz".getBytes()))));
+					
+					System.out.println(first.toString());
+					for(int i = 0; i < threadListCopy.size(); i++)
+					{
+						System.out.println(threadListCopy.get(i).toString());
+					}
 				}
 				catch (Exception e)
 				{
@@ -100,6 +105,8 @@ public class Implementation
 				}
 			}
 		}, 1000 * 10);
+		
+		while(true);
 	}
 	
 }

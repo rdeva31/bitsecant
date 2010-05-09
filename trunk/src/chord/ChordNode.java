@@ -66,7 +66,7 @@ public class ChordNode
 
 	public String getHashString()
 	{
-		String hashString = "[" + hash.length + "] ";
+		String hashString = "";
 
 		for(int b = 0; b < hash.length; b++)
 		{
@@ -100,7 +100,7 @@ public class ChordNode
 		}
 	}
 
-	public void close() throws Exception
+	public void close()
 	{
 		try
 		{
@@ -109,6 +109,10 @@ public class ChordNode
 				sock.close();
 				sock = null;
 			}
+		}
+		catch (Exception e)
+		{
+			sock = null;
 		}
 		finally
 		{
@@ -166,7 +170,7 @@ public class ChordNode
 		return true;
 	}
 
-	private static int compare(byte[] hash1, byte[] hash2)
+	public static int compare(byte[] hash1, byte[] hash2)
 	{
 		for (int c = 0; c < hash1.length; c++)
 		{
@@ -215,7 +219,7 @@ public class ChordNode
 
 	public String toString()
 	{
-		return port + ":" + getHashString();
+		return "[" + port + "] " + getHashString();
 	}
 
 	public enum MessageType {
@@ -229,7 +233,10 @@ public class ChordNode
 		GET(7),
 		GET_REPLY(8),
 		PUT(9),
-		APPEND(10);
+		APPEND(10),
+		GET_REPLY_INVALID(11),
+		SUCCESSOR_LIST(12),
+		SUCCESSOR_LIST_REPLY(13);
 
 		private int value;
 		private MessageType(int value)
