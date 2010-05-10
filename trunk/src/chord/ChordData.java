@@ -1,9 +1,17 @@
 package chord;
 
+import java.util.*;
+
 public class ChordData
 {
 	private byte[] hash;
 	private byte[] data;
+	
+	public ChordData()
+	{
+		hash = null;
+		data = null;
+	}
 	
 	public ChordData(byte[] hash, byte[] data)
 	{
@@ -20,10 +28,17 @@ public class ChordData
 	{
 		return data;
 	}
-	
+
 	public void setData(byte[] data)
 	{
 		this.data = data;
+	}
+	
+	public void appendData(byte[] data)
+	{
+		int originalLength = this.data.length;
+		this.data = Arrays.copyOf(this.data, this.data.length + data.length);
+		System.arraycopy(data, 0, this.data, originalLength, data.length);
 	}
 
 	public String getHashString()
