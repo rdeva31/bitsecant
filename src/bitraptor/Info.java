@@ -11,7 +11,7 @@ import java.io.*;
 public abstract class Info
 {
 	//Information about the torrent
-	private List<URL> announceUrls = null;
+	private Map<InetAddress, Integer> nodes = null;
 	private byte[] infoHash = null;
 	private long creationDate = 0;
 	private String comment = null, createdBy = null, encoding = null;
@@ -30,7 +30,7 @@ public abstract class Info
 	*/
 	public Info(Info toCopy)
 	{
-		this.announceUrls = toCopy.announceUrls;
+		this.nodes = new HashMap<InetAddress, Integer>(toCopy.nodes);
 		this.infoHash = (toCopy.infoHash == null) ? null : Arrays.copyOf(toCopy.infoHash, toCopy.infoHash.length);
 		this.creationDate = toCopy.creationDate;
 		this.comment = toCopy.comment;
@@ -41,21 +41,21 @@ public abstract class Info
 	}
 
 	/**
-		Returns the list of trackers' announce URLs associated with this torrent.
-		@return List of announce URLs
+		Returns the set of DHT nodes that are known to be static in the ring
+		@return set of static nodes
 	*/
-	public List<URL> getAnnounceUrls()
+	public Map<InetAddress, Integer> getNodes()
 	{
-		return announceUrls;
+		return nodes;
 	}
 
 	/**
-		Sets the tracker URLs associated with this torrent.  Only accepts http:// protocol.
-		@param announceUrls List of torrent's announce URLs (should not be null)
+		Sets the DHT nodes that are known to be static in the ring
+		@param nodes static nodes in the ring
 	*/
-	public void setAnnounceUrls(List<URL> announceUrls)
+	public void setNodes(Map<InetAddress, Integer> nodes)
 	{
-		this.announceUrls = announceUrls;
+		this.nodes = nodes;
 	}
 
 	/**
@@ -263,7 +263,7 @@ public abstract class Info
 	@Override
 	public String toString()
 	{
-		return "announceurls:" + announceUrls.toString() +
+		return "nodes:" + nodes.toString() +
 				"; infohash:" + (infoHash == null ? "null" : infoHash) +
 				"; creationdate: " + //creationDate +
 				"; comment: " + comment +

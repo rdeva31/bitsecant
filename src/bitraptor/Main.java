@@ -16,6 +16,8 @@ public class Main
 	private static HashMap<String, Torrent> torrents = new HashMap<String, Torrent>();
 	private static HashMap<SocketChannel, ByteBuffer> buffers = new HashMap<SocketChannel, ByteBuffer>();
 
+	private static int port = 45507;
+
 	/**
 		Starts the BitRaptor program.  No arguments required.
 	 */
@@ -23,6 +25,20 @@ public class Main
 	{
 		System.out.println("BitRaptor -- A bittorrent client");
 		System.out.println("(Type 'help' to see available commands)");
+
+		if ((args == null) || (args.length == 0))
+		{
+			System.out.println("Usage: BitRaptor <port>");
+			return;
+		}
+
+		port = new Integer(args[0]);
+
+		if (port < 1024 || port > 65535)
+		{
+			System.out.println("ERROR: Invalid port number, choose one between 1024-65535");
+			return;
+		}
 		
 		//Starting up the main socket server (not blocking) to listen for incoming peers
 		try
@@ -31,7 +47,7 @@ public class Main
 			sock = ServerSocketChannel.open();
 			sock.configureBlocking(false);
 			sock.socket().setReuseAddress(true);
-			sock.socket().bind(new InetSocketAddress(45507));
+			sock.socket().bind(new InetSocketAddress(port));
 		}
 		catch (Exception e)
 		{
@@ -144,6 +160,7 @@ public class Main
 						if (buffer.get() != 19)
 						{
 							selected.cancel();
+							buffers.remove(incSock);
 							incSock.close();
 							continue;
 						}
@@ -156,6 +173,7 @@ public class Main
 							if (protocolName[b] != name[b])
 							{
 								selected.cancel();
+								buffers.remove(incSock);
 								incSock.close();
 								continue;
 							}
@@ -184,7 +202,9 @@ public class Main
 						//Dropping the connection if no torrent matches it
 						else
 						{
+//							System.out.println("[INC FAIL] " + (InetSocketAddress)(incSock.socket().getRemoteSocketAddress()));
 							selected.cancel();
+							buffers.remove(incSock);
 							incSock.close();
 							continue;
 						}
@@ -324,7 +344,6 @@ public class Main
 						info = new SingleFileInfo(info);
 						SingleFileInfo infoAlias = (SingleFileInfo)info;
 
-
 						//Name
 						infoAlias.setName(new String(infoDictionary.get("name").getBytes()));
 
@@ -336,7 +355,6 @@ public class Main
 						{
 							infoAlias.setMd5sum(infoDictionary.get("md5sum").getBytes());
 						}
-
 					}
 					else
 						throw new Exception("Invalid torrent file.  info doesn't contain files or length");
@@ -360,40 +378,29 @@ public class Main
 						info.setPrivateTorrent(false);
 					}
 				}
-				//Announce
-				else if (field.equalsIgnoreCase("announce"))
+				//Nodes
+				else if (field.equalsIgnoreCase("nodes"))
 				{
-					if (info.getAnnounceUrls() == null)
+					List<BEValue> nodesList = torrentFileMappings.get(field).getList();
+					Map<InetAddress, Integer> nodes = new HashMap<InetAddress, Integer>();
+					for (BEValue nodeList : nodesList)
 					{
-						info.setAnnounceUrls(new ArrayList<URL>());
-					}
-					
-					//'Announce' URL is top priority URL in the list
-					info.getAnnounceUrls().add(0, new URL(new String(torrentFileMappings.get(field).getBytes())));
-				}
-				//Announce List
-				else if (field.equalsIgnoreCase("announce-list"))
-				{
-					List<BEValue> announceLists = torrentFileMappings.get(field).getList();
-					
-					if (info.getAnnounceUrls() == null)
-					{
-						info.setAnnounceUrls(new ArrayList<URL>());
-					}
-					
-					for (BEValue b : announceLists)
-					{
-						List<BEValue> l = b.getList(); 
-						for (BEValue announceUrl : l)
+						List<BEValue> nodeInfoList = nodeList.getList();
+						
+						String address = nodeInfoList.get(0).getString();
+						int port = nodeInfoList.get(1).getInt();
+						
+						try
 						{
-							//Only working with trackers that are contacted over HTTP
-							URI u = new URI(new String(announceUrl.getBytes()));
-							if (u.getScheme().equalsIgnoreCase("http"))
-							{
-								info.getAnnounceUrls().add(u.toURL());
-							}
+							nodes.put(InetAddress.getByName(address), port);
+						}
+						catch (Exception e)
+						{
+							
 						}
 					}
+					
+					info.setNodes(nodes);
 				}
 				//Creation Date
 				else if (field.equalsIgnoreCase("creation date"))
@@ -427,7 +434,7 @@ public class Main
 		
 		////////////////////////////////////////////////////////////////
 		////////////////////////////////////////////////////////////////
-		System.out.println("AnnounceURL : " + info.getAnnounceUrls());
+		System.out.println("Nodes: " + info.getNodes());
 		System.out.println("Torrent Created By " + info.getCreatedBy() + " on " + info.getCreationDate() +" with encoding " + info.getEncoding());
 		System.out.println("Comments: " + info.getComment());
 		System.out.println("Info:");
@@ -443,11 +450,18 @@ public class Main
 		{
 			public void run()
 			{
-				Torrent torrent = new Torrent(torrentInfo, 45507);
+				try
+				{
+					Torrent torrent = new Torrent(torrentInfo, port);
 		
 				torrents.put(new String(torrentInfo.getInfoHash()), torrent);
 				
 				torrent.start();
+				}
+				catch (Exception e)
+				{
+					//donothing
+				}
 			}
 		}).start();
 	}

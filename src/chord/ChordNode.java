@@ -1,7 +1,6 @@
 package chord;
 
 import srudp.*;
-import java.io.*;
 import java.net.*;
 import java.nio.*;
 import java.security.*;
@@ -16,6 +15,12 @@ public class ChordNode
 	private short port;
 	private Lock socketLock;
 
+	/**
+	 * Instantiates a new ChordNode based on the ip address and the port.
+	 * @param IPAddr ip address of node you wish to connect to
+	 * @param port port of the node listening for connections
+	 * @throws Exception thrown if IPAddress is invalid in anyway
+	 */
 	public ChordNode(InetAddress IPAddr, short port) throws Exception
 	{
 		sock = null;
@@ -30,6 +35,11 @@ public class ChordNode
 		socketLock = new ReentrantLock();
 	}
 
+	/**
+	 * Associates this code with the socket
+	 * @param sock socket used for talking with other Chords
+	 * @throws Exception if sock is invalid in anyway or contains an invalid address/port
+	 */
 	public ChordNode(RUDPSocket sock) throws Exception
 	{
 		this.sock = sock;
@@ -44,26 +54,46 @@ public class ChordNode
 		socketLock = new ReentrantLock();
 	}
 
+	/**
+	 * Returns the socket used in talking to the node
+	 * @return socket used or null, if none used
+	 */
 	public RUDPSocket getSock()
 	{
 		return sock;
 	}
 
+	/**
+	 * IP address of other socket
+	 * @return ip address--never null
+	 */
 	public InetAddress getIPAddress()
 	{
 		return IPAddr;
 	}
 
+	/**
+	 * Returns the port used in talking to the other socket
+	 * @return the port
+	 */
 	public short getPort()
 	{
 		return port;
 	}
 
+	/**
+	 * SHA-1 hash of the IP address and port
+	 * @return SHA-1 hash--never null
+	 */
 	public byte[] getHash()
 	{
 		return hash;
 	}
 
+	/**
+	 * A human readable string of getHash()
+	 * @return string of getHash()
+	 */
 	public String getHashString()
 	{
 		String hashString = "";
@@ -83,6 +113,10 @@ public class ChordNode
 		return hashString.toUpperCase();
 	}
 
+	/**
+	 * Connects to other node
+	 * @throws Exception on network I/O error
+	 */
 	public void connect() throws Exception
 	{
 		try
@@ -100,6 +134,9 @@ public class ChordNode
 		}
 	}
 
+	/**
+	 * Closes the socket used to talk with other node
+	 */
 	public void close()
 	{
 		try
@@ -118,6 +155,12 @@ public class ChordNode
 		}
 	}
 
+	/**
+	 * Sends message to other node
+	 * @param type type of message
+	 * @param payload message contents
+	 * @throws Exception thrown on Network I/O errors
+	 */
 	public void sendMessage(MessageType type, ByteBuffer payload) throws Exception
 	{
 		byte[] message;
@@ -144,6 +187,14 @@ public class ChordNode
 		sock.write(message);
 	}
 
+	/**
+	 * Returns the response from other node.  Only usable after calling
+	 * sendMessage().  Some MessageTypes don't require a response. Using this
+	 * after those kinds of sendMessage() will result in an exception.
+	 * @return reponse by other other
+	 * @throws Exception in Network I/O error or if other node isn't interested
+	 * in responding
+	 */
 	public ByteBuffer getResponse() throws Exception
 	{
 		return sock.read();
@@ -168,6 +219,20 @@ public class ChordNode
 		return true;
 	}
 
+	@Override
+	public int hashCode() {
+		int hash = 5;
+		hash = 31 * hash + Arrays.hashCode(this.hash);
+		return hash;
+	}
+
+	/**
+	 * Compares two hashes.  Same specs as Comparator.compare()
+	 * @param hash1 first hash to compare
+	 * @param hash2 second hash to compare
+	 * @return positive number of hash1 > hash2, zero if hash1 == hash2, negative
+	 * otherwise
+	 */
 	public static int compare(byte[] hash1, byte[] hash2)
 	{
 		for (int c = 0; c < hash1.length; c++)
@@ -188,6 +253,15 @@ public class ChordNode
 		return 0;
 	}
 
+	/**
+	 * Determines if this condition holds: lowerBound &lt; variant &gt; upperBound.
+	 * @param variant point to compare with upper and lower bounds
+	 * @param lowerBound lower bound
+	 * @param lowerBoundInclusive if lower bound is inclusive
+	 * @param upperBound upper bound
+	 * @param upperBoundInclusive if upperbound is inclusive
+	 * @return true if variant is in range, false otherwise
+	 */
 	public static boolean isInRange(byte[] variant,
 		byte[] lowerBound, boolean lowerBoundInclusive,
 		byte[] upperBound, boolean upperBoundInclusive)
@@ -220,6 +294,10 @@ public class ChordNode
 		return "[" + port + "] " + getHashString();
 	}
 
+	/**
+	 * Specifies the types of messages sendMessage() can send and getResponse()
+	 * will return
+	 */
 	public enum MessageType {
 		PING(0),
 		PING_REPLY(1),
@@ -248,6 +326,12 @@ public class ChordNode
 			return value;
 		}
 
+		/**
+		 * Returns the Enum form fo the value val.
+		 * @param val value to convert to enum
+		 * @return corresponding Enum
+		 * @throws Exception if value is not representable as Enum
+		 */
 		public static MessageType fromInt(int val) throws Exception
 		{
 			for (MessageType m : MessageType.values())
