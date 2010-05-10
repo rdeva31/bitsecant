@@ -1,11 +1,11 @@
 package bitraptor;
 
 import java.util.*;
-import java.net.*;
-import java.io.*;
 import java.nio.*;
 import java.nio.channels.*;
-import org.klomp.snark.bencode.*;
+import bitsecant.*;
+import chord.*;
+import java.net.InetAddress;
 
 public class Torrent
 {
@@ -40,13 +40,17 @@ public class Torrent
 	
 	private final int END_GAME_REQUEST_TIMER_PERIOD = 30*1000; //in milliseconds
 	private boolean endGameRequestTimerStatus = false; 
+
+	private final int ANNOUNCE_TIMER_PERIOD = 18*1000; //in milliseconds
+	private final int PEER_EXPIRER_TIMER_PERIOD = 1*1000; //in milliseconds
 	
+	private Chord chord;
 	/**
 		Initializes the Torrent based on the information from the file.
 		@param info Contains torrent characteristics
 		@param port Port number between 1024-65535
 	*/
-	public Torrent(Info info, int port)
+	public Torrent(Info info, int port) throws Exception
 	{
 		this.port = port;
 		this.info = info;
@@ -84,6 +88,22 @@ public class Torrent
 		{
 			System.out.println("ERROR: Could not open selectors for use in torrent");
 			System.exit(-1);
+		}
+
+		//join the ring
+		chord = new Chord(port);
+		for (InetAddress IPAddr : info.getNodes().keySet())
+		{
+			try
+			{
+				ChordNode n = new ChordNode(IPAddr, info.getNodes().get(IPAddr).shortValue());
+				chord.join(n);
+			}
+			catch (Exception e)
+			{
+				continue;
+			}
+			break;
 		}
 	}
 
@@ -353,7 +373,7 @@ public class Torrent
 	{
 				
 		//Starting up the announcer (runs immediately and then it internally handles scheduling)
-		(new TorrentAnnouncer(this)).run();
+		(new DHTAnnouncer(this)).run();
 		
 		//Starting up the upload slot assign timer
 		Timer uploadSlotTimer = new Timer(false);
@@ -365,6 +385,10 @@ public class Torrent
 
 		//Initializing the end game request timer
 		Timer endGameRequestTimer = null;
+
+		//Starting up the peer expirer timer
+		Timer peerExpirerTimer = new Timer(false);
+		peerExpirerTimer.scheduleAtFixedRate(new ExpirePeersTimer(), PEER_EXPIRER_TIMER_PERIOD, PEER_EXPIRER_TIMER_PERIOD);
 		
 		//Looping forever
 		while(true)
@@ -419,7 +443,7 @@ public class Torrent
 				//Canceling the current announcer timer, and doing it immediately to show completition
 				announcerTimer.cancel();
 				announcerTimer = new Timer(false);
-				announcerTimer.schedule(new TorrentAnnouncer(this), 0);
+				announcerTimer.schedule(new DHTAnnouncer(this), 0);
 
 				break;
 			}
@@ -869,33 +893,15 @@ public class Torrent
 		}
 	}
 	
-	private class TorrentAnnouncer extends TimerTask
+	private class DHTAnnouncer extends TimerTask
 	{
 		private Torrent toAnnounce;
 		
-		public TorrentAnnouncer(Torrent toAnnounce)
+		public DHTAnnouncer(Torrent toAnnounce)
 		{
 			this.toAnnounce = toAnnounce;
 		}
-	
-		/**
-			Encodes an array of bytes into a valid URL string representation
-		
-			@param data Array of bytes
-		
-			@return Encoded representation String
-		*/
-		private String encode(byte[] data)
-		{
-			String encoded = "";
-		
-			for (int b = 0; b < data.length; b++)
-			{
-				encoded += "%" + (((data[b] & 0xF0) == 0) ? ("0" + Integer.toHexString(data[b] & 0xFF)) : Integer.toHexString(data[b] & 0xFF));
-			}
-		
-			return encoded;
-		}
+
 		
 		/**
 			Schedules another announce to occur after a certain number of seconds
@@ -905,7 +911,7 @@ public class Torrent
 		private void schedule(int seconds)
 		{
 			announcerTimer = new Timer(false);
-			announcerTimer.schedule(new TorrentAnnouncer(toAnnounce), seconds * 1000);
+			announcerTimer.schedule(new DHTAnnouncer(toAnnounce), seconds * 1000);
 		}
 		
 		/**
@@ -916,166 +922,23 @@ public class Torrent
 		*/
 		public void run()
 		{
-			byte[] response = null;
-		
-			//Going through all the announce URLs (if needed)
-			for (URL announceURL : info.getAnnounceUrls())
-      		{
-				//Setting up the query URL
-				String query = "?info_hash=" + encode(info.getInfoHash()) + "&peer_id=" + encode(peerID) + "&port=" + port + 
-				"&uploaded=0&downloaded=0&left=" + info.getFileLength() + "&compact=0&no_peer_id=0";
-				
-				//Including event if not in RUNNING state
-				if (state != State.RUNNING)
-				{
-					query += "&event=" + state.toString().toLowerCase();
-				}
-			
-				//Including tracker ID if it was set by the tracker previously
-				if (trackerID != null)
-				{
-					query += "&trackerid=" + trackerID;
-				}
-		
-				try
-				{
-//					System.out.println("[ANNOUNCE] " + announceURL.toString());
-					
-					//Initializing the connection
-					URL trackerQueryURL = new URL(announceURL.toString() + query);
-					HttpURLConnection conn = (HttpURLConnection)(trackerQueryURL.openConnection());
-					conn.setRequestMethod("GET");
-					conn.setDoOutput(true);
-					conn.connect();
-		
-					//Reading the response from the tracker
-					InputStream istream = conn.getInputStream();
-					response = new byte[256];
-					int totalBytesRead = 0;
-					int bytesRead = 0;
-				
-					while ((bytesRead = istream.read(response, totalBytesRead, 256)) != -1)
-					{
-						totalBytesRead += bytesRead;
-						
-						//Done reading, so remove extra bytes from end of response
-						if (bytesRead < 256)
-						{
-							response = Arrays.copyOf(response, totalBytesRead);
-						}
-						//Set up response for next read
-						else
-						{
-							response = Arrays.copyOf(response, totalBytesRead + 256);
-						}
-					}
-
-					//Disconnecting from the tracker
-					istream.close();
-					conn.disconnect();
-
-					break;
-				}
-				//Move onto the next announce URL
-				catch (Exception e)
-				{
-					continue;
-				}
-			}
-			
-			//No response from any of the announce URLs
-			if (response == null)
-			{
-//				System.out.println("ERROR: Couldn't announce");
-//				System.out.println("Will retry in 30 seconds...");
-				schedule(30);
-				return;
-			}
-
-			//Updating state to running upon a successful response after started state
-			if (state == State.STARTED)
-			{
-				state = State.RUNNING;
-			}
-			
-			//Parsing the response from the tracker
 			try
 			{
-				BDecoder decoder = new BDecoder(new ByteArrayInputStream(response));
-				Map<String, BEValue> replyDictionary = decoder.bdecode().getMap();
+				byte[] payload = Arrays.copyOf(InetAddress.getLocalHost().getAddress(), 8);
+				payload[4] = (byte)((port>>8) & 0xff);
+				payload[5] = (byte)(port & 0xff);
+				payload[6] = ~0;
+				payload[7] = ~0;
 				
-				//Announce failed
-				if (replyDictionary.containsKey("failure reason"))
-				{
-					String reason = new String(replyDictionary.get("failure reason").getBytes());
-//					System.out.println("Announce Failed: " + reason);
-					
-//					System.out.println("Will retry in 30 seconds...");
-					schedule(30);
-					return;
-				}
-				
-				int interval = replyDictionary.get("interval").getInt();
-				int seeders = replyDictionary.get("complete").getInt();
-				int leechers = replyDictionary.get("incomplete").getInt();
-				
-//				System.out.println("Seeders: " + seeders);
-//				System.out.println("Leechers: " + leechers);
-				
-				//Tracker ID is an optional field
-				if (replyDictionary.containsKey("tracker id"))
-				{
-					trackerID = new String(replyDictionary.get("tracker id").getBytes());
-				}
-
-				//Skipping over new peers if we are completed
-				if (state != state.COMPLETED)
-				{
-					//Getting peer information via dictionaries (Throws exception if tracker sent in binary format)
-					try
-					{
-						List<BEValue> peersDictionaries = replyDictionary.get("peers").getList();
-
-						for (BEValue peerDictionary : peersDictionaries)
-						{
-							Map<String, BEValue> peerDictionaryMap = peerDictionary.getMap();
-
-							byte[] peerID = peerDictionaryMap.get("peer id").getBytes();
-							String IPAddr = peerDictionaryMap.get("ip").getString();
-							int port = peerDictionaryMap.get("port").getInt();
-
-							addPeer(new Peer(toAnnounce, peerID, IPAddr, port), false);
-						}
-					}
-					//Getting peer information via binary format
-					catch (InvalidBEncodingException e)
-					{
-						byte[] peers = replyDictionary.get("peers").getBytes();
-
-						for (int c = 0; c < peers.length; c += 6)
-						{
-							String IPAddr = Integer.toString((int)peers[c] & 0xFF) + "."
-								+ Integer.toString((int)peers[c + 1] & 0xFF) + "."
-								+ Integer.toString((int)peers[c + 2] & 0xFF) + "."
-								+ Integer.toString((int)peers[c + 3] & 0xFF);
-							int port = (((peers[c + 4] & 0xFF) << 8) + (peers[c + 5] & 0xFF)) & 0xFFFF;
-
-							addPeer(new Peer(toAnnounce, new byte[20], IPAddr, port), false);
-						}
-					}
-				}
-				
-				//Scheduling another announce after the specified time interval
-//				System.out.println("Announce Successful! " + interval + " seconds until next announce");
-				schedule(interval);
+				chord.put(new ChordData(info.getInfoHash(), payload), true);
 			}
-			//Invalid response from the tracker (Could not be parsed)
 			catch (Exception e)
 			{
-//				System.out.println("ERROR: Received an invalid response from the tracker");
-//				System.out.println("Will retry in 30 seconds...");
-//				e.printStackTrace();
-				schedule(30);
+				System.out.println("Announce failed");
+			}
+			finally
+			{
+				schedule(ANNOUNCE_TIMER_PERIOD);
 			}
 		}
 	}
@@ -1188,5 +1051,34 @@ public class Torrent
 		{
 			endGameRequestTimerStatus = true;
 		}
-	} 
+	}
+
+	private class ExpirePeersTimer extends TimerTask
+	{
+		public void run()
+		{
+			Collection<ChordData> coll = chord.getLocalData();
+			if(coll.size() == 0)
+				return;
+
+			for (ChordData c : coll)
+			{
+				RaptorData rawr = null;
+				try
+				{
+					rawr = new RaptorData(c.getHash(), c.getData());
+				}
+				catch (Exception e)
+				{
+					System.out.println("length was not multiple of 8");
+					return;
+				}
+				rawr.agePeers();
+				rawr.expirePeers();
+				c.setData(rawr.getData());
+			}
+
+			chord.removeGarbage();
+		}
+	}
 }
