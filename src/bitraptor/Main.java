@@ -7,10 +7,6 @@ import java.nio.*;
 import java.nio.channels.*;
 import org.klomp.snark.bencode.*;
 
-
-/**
-	
-*/
 public class Main
 {
 	private static byte[] protocolName = {'B', 'i', 't', 'T', 'o', 'r', 'r', 'e', 'n', 't', ' ', 'p', 'r', 'o', 't', 'o', 'c', 'o', 'l'};

@@ -108,14 +108,12 @@ public class ChordNode
 			{
 				sock.close();
 				sock = null;
+				socketLock.unlock();
 			}
 		}
 		catch (Exception e)
 		{
 			sock = null;
-		}
-		finally
-		{
 			socketLock.unlock();
 		}
 	}
@@ -236,7 +234,8 @@ public class ChordNode
 		APPEND(10),
 		GET_REPLY_INVALID(11),
 		SUCCESSOR_LIST(12),
-		SUCCESSOR_LIST_REPLY(13);
+		SUCCESSOR_LIST_REPLY(13),
+		REMOVE(14);
 
 		private int value;
 		private MessageType(int value)
