@@ -45,8 +45,9 @@ public class Torrent
 	private final int END_GAME_REQUEST_TIMER_PERIOD = 30*1000; //in milliseconds
 	private boolean endGameRequestTimerStatus = false;
 
-	private final int DHT_ANNOUNCE_TIMER_PERIOD = 1800; //in seconds
-	private final int PEER_EXPIRER_TIMER_PERIOD = 60*1000; //in milliseconds
+	private final int DHT_ANNOUNCE_TIMER_PERIOD = 60; //in seconds
+	private final int PEER_EXPIRER_TIMER_PERIOD = 5*1000; //in milliseconds
+	private final int INITIAL_TTL = (int)((DHT_ANNOUNCE_TIMER_PERIOD * 1.5) / (PEER_EXPIRER_TIMER_PERIOD / 1000)); //in seconds
 
 	/**
 		Initializes the Torrent based on the information from the file.
@@ -1002,8 +1003,8 @@ public class Torrent
 				byte[] payload = Arrays.copyOf(InetAddress.getLocalHost().getAddress(), 8);
 				payload[4] = (byte)(port >> 8);
 				payload[5] = (byte)(port);
-				payload[6] = ~0;
-				payload[7] = ~0;
+				payload[6] = (byte)(INITIAL_TTL >> 8);
+				payload[7] = (byte)INITIAL_TTL;
 
 				chord.put(new ChordData(info.getInfoHash(), payload), true);
 
@@ -1050,7 +1051,6 @@ public class Torrent
 			{
 			 	try
 				{
-					System.out.println("::" + c.getPort());
 					addPeer(new Peer(toAnnounce, new byte[20], c.getIPAddress().getHostAddress(), ((int)c.getPort()) & 0xFFFF), false);
 				}
 				catch (Exception e)

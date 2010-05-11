@@ -11,6 +11,7 @@ public class RUDPSocket
 	private DatagramChannel sock;
 	private InetSocketAddress sockAddr;
 	private Selector select;
+	private boolean isReadTimedOut;
 
 	public RUDPSocket(InetAddress IPAddr, int port) throws Exception
 	{
@@ -101,13 +102,33 @@ public class RUDPSocket
 	{
 		ByteBuffer packet = ByteBuffer.allocate(64*1024);
 		InetSocketAddress returnAddr;
-		
+
+		isReadTimedOut = false;
+
+		Timer readTimeoutTimer = new Timer(false);
+		readTimeoutTimer.schedule(new TimerTask()
+		{
+			public void run()
+			{
+				isReadTimedOut = true;
+			}
+		}
+		, 1500);
+
 		while(true)
 		{
 			packet.clear();
-			while((returnAddr = (InetSocketAddress)sock.receive(packet)) == null)
+			while(((returnAddr = (InetSocketAddress)sock.receive(packet)) == null) && !isReadTimedOut)
 			{
 			}
+
+			readTimeoutTimer.cancel();
+
+			if(isReadTimedOut)
+			{
+				throw new Exception("Read timed out");
+			}
+
 			packet.flip();
 
 			if(packet.remaining() < 20)

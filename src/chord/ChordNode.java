@@ -124,7 +124,7 @@ public class ChordNode
 			socketLock.lock();
 			if(sock == null)
 			{
-				sock = new RUDPSocket(IPAddr, port);
+				sock = new RUDPSocket(IPAddr, (int)port & 0xFFFF);
 			}
 		}
 		catch (Exception e)
@@ -291,7 +291,7 @@ public class ChordNode
 
 	public String toString()
 	{
-		return "[" + port + "] " + getHashString();
+		return "[" + ((int)port & 0xFFFF) + "] " + getHashString();
 	}
 
 	/**
