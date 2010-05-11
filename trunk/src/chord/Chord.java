@@ -30,31 +30,40 @@ public class Chord
 	{
 		int start = 0;
 		Chord chord = null;
-		short port = 0;
+		int port = 0;
 		final int TIMER_PERIOD = 1000;
 		
 		//Checking the command line arguments
 		for (start = 0; start < args.length; start++)
 		{
 			//Port to listen on for incoming messages
-			if (args[start].equalsIgnoreCase("-listen"))
+			if (args[start].equalsIgnoreCase("-listen") || args[start].equalsIgnoreCase("-l"))
 			{
-				chord = new Chord((short)Integer.parseInt(args[++start]));
+				chord = new Chord(Integer.parseInt(args[++start]));
 			}
 			//Node will join the ring by contacting the node at the specified port
-			else if (args[start].equalsIgnoreCase("-join"))
+			else if (args[start].equalsIgnoreCase("-join") || args[start].equalsIgnoreCase("-j"))
 			{
 				if (chord == null)
 				{
 					System.out.println("ERROR: Specify -listen before -join");
 					return;
 				}
-				
-				port = (short)Integer.parseInt(args[++start]);
-				chord.join(new ChordNode(InetAddress.getLocalHost(), port));
+
+				String address = args[++start];
+				port = Integer.parseInt(args[++start]);
+
+				if(address.equals("#"))
+				{
+					chord.join(new ChordNode(InetAddress.getLocalHost(), (short)port));
+				}
+				else
+				{
+					chord.join(new ChordNode(InetAddress.getByName(address), (short)port));
+				}
 			}
 			//Node will create the ring
-			else if (args[start].equalsIgnoreCase("-create"))
+			else if (args[start].equalsIgnoreCase("-create") || args[start].equalsIgnoreCase("-c"))
 			{
 				if (chord == null)
 				{
