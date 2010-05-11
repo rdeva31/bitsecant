@@ -43,7 +43,10 @@ public class ChordData
 	 */
 	public byte[] getData()
 	{
-		return data;
+		synchronized(this.data)
+		{
+			return data;
+		}
 	}
 
 	/**
@@ -52,7 +55,10 @@ public class ChordData
 	 */
 	public void setData(byte[] data)
 	{
-		this.data = data;
+		synchronized(this.data)
+		{
+			this.data = data;
+		}
 	}
 
 	/**
@@ -61,9 +67,12 @@ public class ChordData
 	 */
 	public void appendData(byte[] data)
 	{
-		int originalLength = this.data.length;
-		this.data = Arrays.copyOf(this.data, this.data.length + data.length);
-		System.arraycopy(data, 0, this.data, originalLength, data.length);
+		synchronized(this.data)
+		{
+			int originalLength = this.data.length;
+			this.data = Arrays.copyOf(this.data, this.data.length + data.length);
+			System.arraycopy(data, 0, this.data, originalLength, data.length);
+		}
 	}
 
 	/**
@@ -92,6 +101,9 @@ public class ChordData
 
 	public String toString()
 	{
-		return getHashString() + " -> " + new String(data);
+		synchronized(this.data)
+		{
+			return getHashString() + " -> " + new String(data);
+		}
 	}
 }

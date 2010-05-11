@@ -1,4 +1,4 @@
-package bitsecant;
+package bitraptor;
 
 import chord.ChordData;
 import java.net.InetAddress;
@@ -7,11 +7,35 @@ import java.util.*;
 
 public class RaptorData extends ChordData 
 {
-	private class Container 
+	public class PeerData
 	{
 		InetAddress IPAddr; 
 		short port, ttl;
-
+		
+		public PeerData()
+		{
+		}
+		
+		public PeerData(InetAddress IPAddr, short port)
+		{
+			this.IPAddr = IPAddr;
+			this.port = port;
+		}
+		
+		public int getPort()
+		{
+			return port;
+		}
+		
+		public int getTTL()
+		{
+			return ttl;
+		}
+		
+		public InetAddress getIPAddress()
+		{
+			return IPAddr;
+		}
 		@Override
 		public boolean equals(Object obj)
 		{
@@ -23,16 +47,12 @@ public class RaptorData extends ChordData
 			{
 				return false;
 			}
-			final Container other = (Container) obj;
-			if (this.IPAddr != other.IPAddr && (this.IPAddr == null || !this.IPAddr.equals(other.IPAddr)))
+			final PeerData other = (PeerData) obj;
+			if (!this.IPAddr.equals(other.IPAddr))
 			{
 				return false;
 			}
 			if (this.port != other.port)
-			{
-				return false;
-			}
-			if (this.ttl != other.ttl)
 			{
 				return false;
 			}
@@ -48,7 +68,7 @@ public class RaptorData extends ChordData
 		}
 	} 
 	
-	private List<Container> peerList;
+	private List<PeerData> peerList;
 	private final int CONTAINER_SIZE = (4 + Short.SIZE/8 + Short.SIZE/8);
 	private final int MAX_TTL = 50;
 	
@@ -71,7 +91,7 @@ public class RaptorData extends ChordData
 		int dataIndex = 0;
 		for (int c = 0; c < peerList.size(); ++c)
 		{
-			Container container = peerList.get(c);
+			PeerData container = peerList.get(c);
 			byte[] IPAddr = container.IPAddr.getAddress();
 			data[dataIndex++] = IPAddr[0];
 			data[dataIndex++] = IPAddr[1];
@@ -107,8 +127,8 @@ public class RaptorData extends ChordData
 	{
 		try
 		{
-			List<Container> peerList = parseArray(data);
-			for (Container c : peerList)
+			List<PeerData> peerList = parseArray(data);
+			for (PeerData c : peerList)
 			{
 				int index = this.peerList.indexOf(c);
 				if (index < 0) //doesn't have, so add
@@ -127,47 +147,52 @@ public class RaptorData extends ChordData
 		}
 	}
 	
+	public List<PeerData> getPeerList()
+	{
+		return peerList;
+	}
+	
 	public void expirePeers()
 	{
-		Set <Container> toRemove  = new HashSet<Container>();
-		Set <String> serviced = new HashSet<String>();
+		Set <PeerData> toRemove  = new HashSet<PeerData>();
+		Set <PeerData> serviced = new HashSet<PeerData>();
 		
-		Collections.sort(peerList, new Comparator<Container>()
+		Collections.sort(peerList, new Comparator<PeerData>()
 		{
-			public int compare(Container a, Container b)
+			public int compare(PeerData a, PeerData b)
 			{
 				return -1*(a.ttl - b.ttl);
 			}
 		});
 		
-		for (Container c : peerList)
+		for (PeerData c : peerList)
 		{
-			if (c.ttl <= 0 || serviced.contains(c.IPAddr.toString() + c.port))
+			if (c.ttl <= 0 || serviced.contains(c))
 			{
 				toRemove.add(c);
 			}
-			serviced.add(c.IPAddr.toString() + c.port);
+			serviced.add(c);
 		}
 		peerList.removeAll(toRemove);
 	}
 	
 	public void agePeers()
 	{
-		for (Container c : peerList)
+		for (PeerData c : peerList)
 		{
 			c.ttl--;
 		}
 	}
 
-	private List<Container> parseArray(byte[] data) throws Exception
+	private List<PeerData> parseArray(byte[] data) throws Exception
 	{
 		if (data.length % CONTAINER_SIZE != 0)
 			throw new Exception("data.length must be multiple of " + CONTAINER_SIZE);
 
-		List<Container> l = new ArrayList<Container>(data.length);
+		List<PeerData> l = new ArrayList<PeerData>(data.length);
 		for (int c = 0; c < data.length;)
 		{
-			Container container = new Container();
+			PeerData container = new PeerData();
 			
 			byte[] IPAddr = new byte[4];
 			IPAddr[0] = data[c++];
@@ -176,8 +201,8 @@ public class RaptorData extends ChordData
 			IPAddr[3] = data[c++];
 			
 			container.IPAddr = InetAddress.getByAddress(IPAddr);
-			container.port = (short)((data[c++] << 8) | data[c++]);
-			container.ttl = (short)((data[c++] << 8) | data[c++]);
+			container.port = (short)((((int)data[c++] & 0xFF) << 8) | ((int)data[c++] & 0xFF));
+			container.ttl = (short)((((int)data[c++] & 0xFF) << 8) | ((int)data[c++] & 0xFF));
 			l.add(container);
 		}
 
