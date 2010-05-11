@@ -97,6 +97,10 @@ public class Main
 							(new Main()).handleDownload(new File(command[1]));
 						}
 					}
+					else if (command[0].equalsIgnoreCase("createring") || command[0].equalsIgnoreCase("cr"))
+					{
+						new RaptorRing(port).start();
+					}
 					//Invalid Command
 					else
 					{
@@ -230,6 +234,7 @@ public class Main
 		String str = "";
 		str += "Available commands are:\n";
 		str += "\tdownload <Torrent File> -- Downloads the files associated with the torrent [NOTE: No spaces in file name]\n";
+		str += "\tcreatering -- Enables bitsecant\n";
 		str += "\texit -- Exits the BitRaptor program\n";
 		
 		System.out.println(str);

@@ -34,12 +34,12 @@ public class Chord
 		final int TIMER_PERIOD = 1000;
 		
 		//Checking the command line arguments
-		for (start = 0; start < args.length; ++start)
+		for (start = 0; start < args.length; start++)
 		{
 			//Port to listen on for incoming messages
 			if (args[start].equalsIgnoreCase("-listen"))
 			{
-				chord = new Chord((short)Integer.parseInt(args[start++]));
+				chord = new Chord((short)Integer.parseInt(args[++start]));
 			}
 			//Node will join the ring by contacting the node at the specified port
 			else if (args[start].equalsIgnoreCase("-join"))
@@ -720,6 +720,7 @@ public class Chord
 		if (ChordNode.isInRange(node.getHash(), key.getHash(), false, successor.getHash(), false))
 		{
 			setSuccessor(node);
+			stabilizeSuccessorList();
 		}
 		//Notifying our successor that we should be its predecessor
 		else
@@ -882,6 +883,7 @@ public class Chord
 			//Skipping over sending the data if we are the last successor
 			if(lastSuccessor.equals(key))
 			{
+				predecessor = null;
 				return;
 			}
 

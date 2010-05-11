@@ -153,11 +153,20 @@ public class SingleFileInfo extends Info
 	
 	public ByteBuffer readPiece(int pieceIndex) throws Exception
 	{
-		int pieceSize = getPieceLength();
+		int pieceSize;
+		if (pieceIndex == fileLength / getPieceLength())
+		{
+			pieceSize = fileLength % getPieceLength();
+		}
+		else
+		{
+			pieceSize = getPieceLength();
+		}
+		
 		ByteBuffer buffer = ByteBuffer.allocate(pieceSize);
 		byte[] data = new byte[pieceSize];
 		
-		file.seek(pieceIndex * pieceSize);
+		file.seek(pieceIndex * getPieceLength());
 		file.read(data);
 		
 		return buffer.put(data);
