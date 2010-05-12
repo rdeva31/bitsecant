@@ -24,12 +24,12 @@ public class RaptorData extends ChordData
 		
 		public int getPort()
 		{
-			return port;
+			return (int)port & 0xFFFF;
 		}
 		
 		public int getTTL()
 		{
-			return ttl;
+			return (int)ttl & 0xFFFF;
 		}
 		
 		public InetAddress getIPAddress()
@@ -69,25 +69,43 @@ public class RaptorData extends ChordData
 	} 
 	
 	private List<PeerData> peerList;
-	private final int CONTAINER_SIZE = (4 + Short.SIZE/8 + Short.SIZE/8);
+	private final int PEER_DATA_SIZE = (4 + Short.SIZE/8 + Short.SIZE/8);
 	private final int MAX_TTL = 50;
 	
 	public RaptorData (byte[] hash, byte[] data) throws Exception
 	{
 		super(hash, data);
 
-		if (data.length % CONTAINER_SIZE != 0)
+		if (data.length % PEER_DATA_SIZE != 0)
 		{
-			throw new Exception("data.length must be multiple of " + CONTAINER_SIZE);
+			throw new Exception("data.length must be multiple of " + PEER_DATA_SIZE);
 		}
 
 		peerList = parseArray(data);
+	}
+
+	@Override
+	public String toString()
+	{
+		String str = "";
+
+		for(PeerData data : peerList)
+		{
+			str += data.getIPAddress().toString() + ":" + data.getPort() + " - " + data.getTTL() + "\n";
+		}
+
+		return str;
 	}
 	
 	@Override
 	public byte[] getData()
 	{
-		byte[] data = new byte[peerList.size() * CONTAINER_SIZE];
+		if(peerList.size() == 0)
+		{
+			return null;
+		}
+
+		byte[] data = new byte[peerList.size() * PEER_DATA_SIZE];
 		int dataIndex = 0;
 		for (int c = 0; c < peerList.size(); ++c)
 		{
@@ -99,11 +117,11 @@ public class RaptorData extends ChordData
 			data[dataIndex++] = IPAddr[3];
 
 			short port = container.port;
-			data[dataIndex++] = (byte)((port>>8) & 0xff);
+			data[dataIndex++] = (byte)((port >> 8) & 0xff);
 			data[dataIndex++] = (byte)(port & 0xff);
 
 			short ttl = container.ttl;
-			data[dataIndex++] = (byte)((ttl>>8) & 0xff);
+			data[dataIndex++] = (byte)((ttl >> 8) & 0xff);
 			data[dataIndex++] = (byte)(ttl & 0xff);
 		}
 		return data;
@@ -149,31 +167,27 @@ public class RaptorData extends ChordData
 	
 	public List<PeerData> getPeerList()
 	{
-		return peerList;
+		return new ArrayList<PeerData>(peerList);
 	}
 	
 	public void expirePeers()
 	{
-		Set <PeerData> toRemove  = new HashSet<PeerData>();
-		Set <PeerData> serviced = new HashSet<PeerData>();
-		
-		Collections.sort(peerList, new Comparator<PeerData>()
-		{
-			public int compare(PeerData a, PeerData b)
-			{
-				return -1*(a.ttl - b.ttl);
-			}
-		});
+		LinkedList<PeerData> revisedList = new LinkedList<PeerData>();
 		
 		for (PeerData c : peerList)
 		{
-			if (c.ttl <= 0 || serviced.contains(c))
+			if (c.ttl > 0)
 			{
-				toRemove.add(c);
+				if(revisedList.contains(c))
+				{
+					revisedList.remove(c);
+				}
+
+				revisedList.add(c);
 			}
-			serviced.add(c);
 		}
-		peerList.removeAll(toRemove);
+
+		peerList = revisedList;
 	}
 	
 	public void agePeers()
@@ -186,8 +200,8 @@ public class RaptorData extends ChordData
 
 	private List<PeerData> parseArray(byte[] data) throws Exception
 	{
-		if (data.length % CONTAINER_SIZE != 0)
-			throw new Exception("data.length must be multiple of " + CONTAINER_SIZE);
+		if (data.length % PEER_DATA_SIZE != 0)
+			throw new Exception("data.length must be multiple of " + PEER_DATA_SIZE);
 
 		List<PeerData> l = new ArrayList<PeerData>(data.length);
 		for (int c = 0; c < data.length;)

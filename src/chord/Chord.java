@@ -16,7 +16,7 @@ public class Chord
 	private final int STABILIZE_TIMER_DELAY = 2*1000; 			//milliseconds
 	private final int CHECK_PREDECESSOR_TIMER_DELAY = 2*1000; 	//milliseconds
 	private final int FIX_FINGERS_TIMER_DELAY = 100; 			//milliseconds
-	private final int SUCCESSOR_LIST_SIZE = 2; 
+	private final int SUCCESSOR_LIST_SIZE = 3;
 
 	private int port;
 	private Map<String, ChordData> dataMap;
@@ -53,14 +53,7 @@ public class Chord
 				String address = args[++start];
 				port = Integer.parseInt(args[++start]);
 
-				if(address.equals("#"))
-				{
-					chord.join(new ChordNode(InetAddress.getLocalHost(), (short)port));
-				}
-				else
-				{
-					chord.join(new ChordNode(InetAddress.getByName(address), (short)port));
-				}
+				chord.join(new ChordNode(InetAddress.getByName(address), (short)port));
 			}
 			//Node will create the ring
 			else if (args[start].equalsIgnoreCase("-create") || args[start].equalsIgnoreCase("-c"))
@@ -76,7 +69,7 @@ public class Chord
 			//Unknown argument
 			else
 			{
-				System.out.println("Usage: <program> -listen <port> [-create] [-join <all other ports>]"); 
+				System.out.println("Usage: Chord -listen <port> [-create] [-join <all other ports>]");
 				return;
 			}
 		}
@@ -497,27 +490,12 @@ public class Chord
 	}
 
 	/**
-	 * Removing the garbage data (those with null data) from the node
+	 * Removing a key,value pair corresponding to the hash from the chord node
+	 * @param hash
 	 */
-	public void removeGarbage()
+	public void remove(byte[] hash)
 	{
-		synchronized(dataMap)
-		{
-			Set<String> keySet = dataMap.keySet();
-			Set<String> toRemove = new HashSet<String>();
-			for (String s : keySet)
-			{
-				if (dataMap.get(s).getData() == null)
-				{
-					toRemove.add(s);
-				}
-			}
-			
-			for (String s: toRemove)
-			{
-				dataMap.remove(s);
-			}
-		}
+		dataMap.remove(new String(hash));
 	}
 
 	/**
@@ -685,6 +663,13 @@ public class Chord
 				synchronized(successorList)
 				{
 					successorList.remove();
+
+					//All of the successors failed, insert ourselves into the list
+					if(successorList.size() == 0)
+					{
+						successorList.add(key);
+					}
+
 					setSuccessor(successorList.get(0));
 				}
 			}

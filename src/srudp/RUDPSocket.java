@@ -90,7 +90,7 @@ public class RUDPSocket
 			retryCount++;
 		}
 		
-		System.out.println("[DROPPED] To Port: " + sockAddr.getPort() + " Message ID: " + ((int)payload[0] & 0xFF));
+//		System.out.println("[DROPPED] To Port: " + sockAddr.getPort() + " Message ID: " + ((int)payload[0] & 0xFF));
 		
 		key.cancel();
 		select.close();

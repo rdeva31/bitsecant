@@ -459,13 +459,14 @@ public class Main
 				{
 					Torrent torrent = new Torrent(torrentInfo, port);
 		
-				torrents.put(new String(torrentInfo.getInfoHash()), torrent);
-				
-				torrent.start();
+					torrents.put(new String(torrentInfo.getInfoHash()), torrent);
+
+					torrent.start();
 				}
 				catch (Exception e)
 				{
-					//donothing
+					System.out.println("ERROR: Could not start downloading the torrent");
+					e.printStackTrace();
 				}
 			}
 		}).start();

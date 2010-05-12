@@ -8,7 +8,7 @@ public class RaptorRing
 	private int port;
 	private Chord chord;
 
-	private final int PEER_EXPIRER_TIMER_PERIOD = 60*1000; //in milliseconds
+	private final int PEER_EXPIRER_TIMER_PERIOD = 2*1000; //in milliseconds
 	
 	public RaptorRing(int port) throws Exception
 	{
@@ -33,7 +33,8 @@ public class RaptorRing
 		//Starting up the peer expirer timer
 		Timer peerExpirerTimer = new Timer(false);
 		peerExpirerTimer.scheduleAtFixedRate(new ExpirePeersTimer(), PEER_EXPIRER_TIMER_PERIOD, PEER_EXPIRER_TIMER_PERIOD);
-		
+
+		//Do nothing
 		while(true)
 		{
 			try
@@ -42,7 +43,6 @@ public class RaptorRing
 			}
 			catch (Exception e)
 			{
-				//Do nothing
 			}
 		}
 	}
@@ -51,32 +51,44 @@ public class RaptorRing
 	{
 		public void run()
 		{
-			Collection<ChordData> coll = chord.getLocalData();
-			if(coll.size() == 0)
+			Collection<ChordData> localData = chord.getLocalData();
+
+			//Nothing to process in our local data
+			if(localData.size() == 0)
 			{
 				return;
 			}
 
-			for (ChordData c : coll)
+			//Going through all of the local data
+			for (ChordData data : localData)
 			{
-				RaptorData rawr = null;
+				//Initializing to parse the data
+				RaptorData rawr;
 				try
 				{
-					rawr = new RaptorData(c.getHash(), c.getData());
+					rawr = new RaptorData(data.getHash(), data.getData());
 				}
 				catch (Exception e)
 				{
-					System.out.println("length was not multiple of 8");
-					return;
+					continue;
 				}
-				
+
+				//Aging the peers, and expiring any that reached TTL = 0
 				rawr.agePeers();
 				rawr.expirePeers();
-				c.setData(rawr.getData());
-			}
 
-			chord.removeGarbage();
+				//Generating the revised data and storing it, or if null, removing it
+				byte[] revisedData = rawr.getData();
+
+				if(revisedData == null)
+				{
+					chord.remove(data.getHash());
+				}
+				else
+				{
+					data.setData(revisedData);
+				}
+			}
 		}
 	}
-	
 }
