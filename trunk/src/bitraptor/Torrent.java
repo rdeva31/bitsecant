@@ -34,10 +34,13 @@ public class Torrent
 
 	private Timer DHTAnnouncerTimer;
 
+
+	private final int BLOCK_SIZE = 16*1024;
+	private final int MAX_PEERS = 50;
+	private final int NUM_UPLOAD_SLOTS = 5; //number of upload slots
+
 	private final int SEEDING_SLOT_ASSIGN_TIMER_PERIOD = 10*1000; //in milliseconds
 	private final int SLOT_ASSIGN_TIMER_PERIOD = 10*1000; //in milliseconds
-	private final int NUM_UPLOAD_SLOTS = 5; //number of upload slots
-	private final int BLOCK_SIZE = 16*1024;
 
 	private final int REQUEST_TIMER_PERIOD = 100; //in milliseconds
 	private boolean requestTimerStatus = false;
@@ -45,9 +48,9 @@ public class Torrent
 	private final int END_GAME_REQUEST_TIMER_PERIOD = 30*1000; //in milliseconds
 	private boolean endGameRequestTimerStatus = false;
 
-	private final int DHT_ANNOUNCE_TIMER_PERIOD = 60; //in seconds
-	private final int PEER_EXPIRER_TIMER_PERIOD = 5*1000; //in milliseconds
-	private final int INITIAL_TTL = (int)((DHT_ANNOUNCE_TIMER_PERIOD * 1.5) / (PEER_EXPIRER_TIMER_PERIOD / 1000)); //in seconds
+	private final int DHT_ANNOUNCE_TIMER_PERIOD = 30; //in seconds
+	private final int PEER_EXPIRER_TIMER_PERIOD = 2*1000; //in milliseconds
+	private final int INITIAL_TTL = (int)((DHT_ANNOUNCE_TIMER_PERIOD * 1.25) / (PEER_EXPIRER_TIMER_PERIOD / 1000)); //in seconds
 
 	/**
 		Initializes the Torrent based on the information from the file.
@@ -74,6 +77,7 @@ public class Torrent
 		}
 
 		peers = new HashMap<SocketChannel, Peer>();
+		peerList = new ArrayList<RaptorData.PeerData>();
 		pieces = new HashMap<Integer, Piece>();
 		uploadSlotActions = new HashMap<Peer, Boolean>();
 		requestedPieces = new BitSet(info.getTotalPieces());
@@ -645,8 +649,7 @@ public class Torrent
 			try
 			{
 				//Performing the select
-				//handshakeSelect.selectNow();
-				handshakeSelect.select(100);
+				handshakeSelect.select(10);
 				Iterator it = handshakeSelect.selectedKeys().iterator();
 
 				while(it.hasNext())
@@ -735,7 +738,7 @@ public class Torrent
 								{
 //									System.out.println("... FAILED!");
 									selected.cancel();
-									peers.remove(sock);
+									forceRemovePeer(peer);
 								}
 
 								continue;
@@ -775,8 +778,7 @@ public class Torrent
 			try
 			{
 				//Performing the select
-				//select.selectNow();
-				select.select(100);
+				select.select(50);
 				Iterator it = select.selectedKeys().iterator();
 
 				while(it.hasNext())
@@ -889,6 +891,34 @@ public class Torrent
 
 			//Removing the peer from the hashmap
 			peers.remove(peer.getSocket());
+
+			synchronized(peerList)
+			{
+				//Adding new peers for as many as possible
+				Iterator<RaptorData.PeerData> it = peerList.iterator();
+
+				while(it.hasNext())
+				{
+					RaptorData.PeerData newPeer = it.next();
+
+					//Stopping once the maximum number of peers is added
+					if(peers.size() == MAX_PEERS)
+					{
+						break;
+					}
+
+					//Adding the peer to the peer map, and removing it from this list
+					try
+					{
+						addPeer(new Peer(this, new byte[20], newPeer.getIPAddress().getHostAddress(), ((int)newPeer.getPort()) & 0xFFFF), false);
+						it.remove();
+					}
+					catch (Exception e)
+					{
+						e.printStackTrace();
+					}
+				}
+			}
 		}
 	}
 
@@ -900,8 +930,8 @@ public class Torrent
 	{
 		synchronized (peers)
 		{
-			//Dropping connection if torrent has more than 50 peers
-			if (peers.values().size() >= 75)
+			//Dropping connection if torrent has more than the maximum number of peers
+			if (peers.values().size() >= MAX_PEERS)
 			{
 				if (incoming)
 				{
@@ -1007,8 +1037,6 @@ public class Torrent
 				payload[7] = (byte)INITIAL_TTL;
 
 				chord.put(new ChordData(info.getInfoHash(), payload), true);
-
-				schedule(DHT_ANNOUNCE_TIMER_PERIOD);
 			}
 			catch (Exception e)
 			{
@@ -1033,31 +1061,48 @@ public class Torrent
 			}
 
 			//Saving and shuffling the list of peers
-			peerList = peerData.getPeerList();
-			Collections.shuffle(peerList);
+			synchronized(peerList)
+			{
+				peerList = peerData.getPeerList();
+				Collections.shuffle(peerList);
 
-			//Removing ourselves from the peer list
-			try
-			{
-				peerList.remove(peerData.new PeerData(InetAddress.getLocalHost(), (short)port));
-			}
-			catch (Exception e)
-			{
-				e.printStackTrace();
-			}
-
-			//Adding peers as necessary
-			for (RaptorData.PeerData c : peerList)
-			{
-			 	try
+				//Removing ourselves from the peer list
+				try
 				{
-					addPeer(new Peer(toAnnounce, new byte[20], c.getIPAddress().getHostAddress(), ((int)c.getPort()) & 0xFFFF), false);
+					peerList.remove(peerData.new PeerData(InetAddress.getLocalHost(), (short)port));
 				}
 				catch (Exception e)
 				{
 					e.printStackTrace();
 				}
+
+				//Adding peers as necessary
+				Iterator<RaptorData.PeerData> it = peerList.iterator();
+
+				while(it.hasNext())
+				{
+					RaptorData.PeerData peer = it.next();
+
+					//Stopping once the maximum number of peers is added
+					if(peers.size() == MAX_PEERS)
+					{
+						break;
+					}
+
+					//Adding the peer to the peer map, and removing it from this list
+					try
+					{
+						addPeer(new Peer(toAnnounce, new byte[20], peer.getIPAddress().getHostAddress(), ((int)peer.getPort()) & 0xFFFF), false);
+						it.remove();
+					}
+					catch (Exception e)
+					{
+						e.printStackTrace();
+					}
+				}
 			}
+
+			schedule(DHT_ANNOUNCE_TIMER_PERIOD);
 		}
 	}
 
@@ -1187,29 +1232,44 @@ public class Torrent
 	{
 		public void run()
 		{
-			Collection<ChordData> coll = chord.getLocalData();
-			if(coll.size() == 0)
-				return;
+			Collection<ChordData> localData = chord.getLocalData();
 
-			for (ChordData c : coll)
+			//Nothing to process in our local data
+			if(localData.size() == 0)
 			{
-				RaptorData rawr = null;
+				return;
+			}
+
+			//Going through all of the local data
+			for (ChordData data : localData)
+			{
+				//Initializing to parse the data
+				RaptorData rawr;
 				try
 				{
-					rawr = new RaptorData(c.getHash(), c.getData());
+					rawr = new RaptorData(data.getHash(), data.getData());
 				}
 				catch (Exception e)
 				{
-					System.out.println("length was not multiple of 8");
-					return;
+					continue;
 				}
 
+				//Aging the peers, and expiring any that reached TTL = 0
 				rawr.agePeers();
 				rawr.expirePeers();
-				c.setData(rawr.getData());
-			}
 
-			chord.removeGarbage();
+				//Generating the revised data and storing it, or if null, removing it
+				byte[] revisedData = rawr.getData();
+
+				if(revisedData == null)
+				{
+					chord.remove(data.getHash());
+				}
+				else
+				{
+					data.setData(revisedData);
+				}
+			}
 		}
 	}
 }

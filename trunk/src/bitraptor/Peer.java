@@ -6,9 +6,8 @@ import java.nio.*;
 import java.nio.channels.*;
 import java.util.*;
 
-public class Peer implements Comparable
+public class Peer
 {
-
 	public enum MessageType {
 		CHOKE(0),
 		UNCHOKE(1),
@@ -324,12 +323,12 @@ public class Peer implements Comparable
 	}
 
 	/**
-		Gets the number of requests currently being handled
-		@return number of requests being handled
+		Gets the number of requests currently queued
+		@return number of queued requests
 	*/
 	public int getNumRequests()
 	{
-		return meRequests.size() + meSentRequests.size();
+		return meRequests.size();
 	}
 
 	/**
@@ -392,32 +391,6 @@ public class Peer implements Comparable
 	public void shuffleRequests()
 	{
 		Collections.shuffle(meRequests);
-	}
-
-	@Override
-	public int compareTo(Object obj)
-	{
-		if (obj == null)
-		{
-			throw new ClassCastException();
-		}
-		if (getClass() != obj.getClass())
-		{
-			throw new ClassCastException();
-		}
-
-		final Peer other = (Peer) obj;
-
-		if (this.getNumRequests() < other.getNumRequests())
-		{
-			return -1;
-		}
-		else if (this.getNumRequests() > other.getNumRequests())
-		{
-			return 1;
-		}
-
-		return 0;
 	}
 
 	/**
