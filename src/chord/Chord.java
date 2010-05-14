@@ -103,7 +103,6 @@ public class Chord
 				catch (Exception e)
 				{
 					System.out.println("-!> GOT: Failed... " + e.getMessage());
-					e.printStackTrace();
 				}
 			}
 			//Put <Key> <Value> - Puts the key,value pair into the ring
@@ -138,6 +137,11 @@ public class Chord
 			else if (cmd.equalsIgnoreCase("print"))
 			{
 				System.out.println(chord);
+			}
+			//PrintFT - Prints the finger table
+			else if (cmd.equalsIgnoreCase("printft"))
+			{
+				System.out.println(chord.fingerTableToString());
 			}
 			//Invalid Command
 			else
@@ -175,6 +179,25 @@ public class Chord
 		dataMap = new HashMap<String, ChordData>();
 
 		sock = new RUDPServerSocket(port);
+	}
+
+	/**
+		Writes the finger table information to a string
+		@return finger table string
+	*/
+	public String fingerTableToString()
+	{
+		String str = "";
+
+		synchronized(fingerTable)
+		{
+			for(int i = 0; i < FINGER_TABLE_SIZE; i++)
+			{
+				str += "[" + i + "] " + fingerTable.get(i).toString() + "\n";
+			}
+		}
+
+		return str;
 	}
 	
 	/**
@@ -495,7 +518,10 @@ public class Chord
 	 */
 	public void remove(byte[] hash)
 	{
-		dataMap.remove(new String(hash));
+		synchronized(dataMap)
+		{
+			dataMap.remove(new String(hash));
+		}
 	}
 
 	/**
@@ -811,10 +837,13 @@ public class Chord
 		}
 
 		ChordNode node = findSuccessor(nextHash);
-		
-		if(!node.equals(fingerTable.get(nextFingerToFix)))
+
+		synchronized(fingerTable)
 		{
-			fingerTable.set(nextFingerToFix, node);
+			if(!node.equals(fingerTable.get(nextFingerToFix)))
+			{
+				fingerTable.set(nextFingerToFix, node);
+			}
 		}
 		
 		nextFingerToFix = (nextFingerToFix + 1) % FINGER_TABLE_SIZE;
@@ -857,7 +886,7 @@ public class Chord
 				for(ChordData data : dataMap.values())
 				{
 					//Only sending data that our predecessor should be directly holding
-					if(!ChordNode.isInRange(data.getHash(), key.getHash(), false, predecessor.getHash(), false))
+					if(ChordNode.isInRange(data.getHash(), key.getHash(), false, predecessor.getHash(), false))
 					{
 						ByteBuffer toSend = ByteBuffer.allocate(HASH_SIZE + data.getData().length);
 						toSend.put(data.getHash());
