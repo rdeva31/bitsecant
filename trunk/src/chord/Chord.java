@@ -15,7 +15,7 @@ public class Chord
 	private final int FINGER_TABLE_SIZE = HASH_SIZE * 8;
 	private final int STABILIZE_TIMER_DELAY = 2*1000; 			//milliseconds
 	private final int CHECK_PREDECESSOR_TIMER_DELAY = 2*1000; 	//milliseconds
-	private final int FIX_FINGERS_TIMER_DELAY = 100; 			//milliseconds
+	private final int FIX_FINGERS_TIMER_DELAY = 200; 			//milliseconds
 	private final int SUCCESSOR_LIST_SIZE = 3;
 
 	private int port;
@@ -563,10 +563,11 @@ public class Chord
 					closest.close();
 					break;
 				}
+				//Finding the next closest node
 				catch (Exception e)
 				{
 					closest.close();
-					closest = findClosestNode(closest.getHash());
+					closest = findClosestNode(closest.getHash(), closest);
 				}
 			}
 
@@ -583,15 +584,45 @@ public class Chord
 	}
 
 	/**
-	 * Finds the node that is closest to the given hash value in the finger table
+	 * Finds the position of the node in the fingertable which is closest to the hash value
 	 * @param hash hash value
-	 * @return closest node to the hash value
+	 * @return closest node
 	 */
 	private ChordNode findClosestNode(byte[] hash)
 	{
 		synchronized(fingerTable)
 		{
 			for (int i = (FINGER_TABLE_SIZE - 1); i >= 0; i--)
+			{
+				ChordNode temp = fingerTable.get(i);
+				if (ChordNode.isInRange(temp.getHash(), key.getHash(), false, hash, false))
+				{
+					return temp;
+				}
+			}
+		}
+
+		return key;
+	}
+
+	/**
+	 * Finds the position of the node in the fingertable which is closest to the hash value
+	 * @param hash hash value
+	 * @param nodeToIgnore search happens below the first case of this node in the table
+	 * @return closest node
+	 */
+	private ChordNode findClosestNode(byte[] hash, ChordNode nodeToIgnore)
+	{
+		synchronized(fingerTable)
+		{
+			int limit = fingerTable.indexOf(nodeToIgnore) - 1;
+
+			if(limit == -1)
+			{
+				return key;
+			}
+
+			for (int i = limit; i >= 0; i--)
 			{
 				ChordNode temp = fingerTable.get(i);
 				if (ChordNode.isInRange(temp.getHash(), key.getHash(), false, hash, false))
